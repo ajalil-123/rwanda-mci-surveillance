@@ -1,0 +1,1309 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Rwanda MCI Surveillance · Dashboard</title>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;600&family=IBM+Plex+Sans:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+<style>
+:root {
+  --bg:       #07090d;
+  --surf:     #0d1117;
+  --surf2:    #161b22;
+  --surf3:    #1c2330;
+  --border:   #21262d;
+  --border2:  #30363d;
+  --text:     #c9d1d9;
+  --dim:      #484f58;
+  --bright:   #f0f6fc;
+  --accent:   #388bfd;
+  --accent2:  #58a6ff;
+  --green:    #3fb950;
+  --yellow:   #d29922;
+  --orange:   #db6d28;
+  --red:      #f85149;
+  --purple:   #bc8cff;
+  --cyan:     #39c5cf;
+  --s1:#3fb950; --s2:#d29922; --s3:#db6d28; --s4:#f85149; --s5:#bc8cff;
+  --mono: "IBM Plex Mono", monospace;
+  --sans: "IBM Plex Sans", sans-serif;
+}
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+html,body{height:100%;background:var(--bg);color:var(--text);font-family:var(--sans);font-size:13px;overflow:hidden}
+
+/* scanner */
+@keyframes scan{0%{top:-2px}100%{top:100%}}
+.scan-line{position:fixed;left:0;width:100%;height:1px;background:linear-gradient(90deg,transparent,var(--accent),transparent);animation:scan 10s linear infinite;pointer-events:none;z-index:9999;opacity:.4}
+
+/* shell */
+#shell{display:grid;height:100vh;overflow:hidden;grid-template-rows:44px 1fr;grid-template-columns:240px 1fr 320px;grid-template-areas:"hdr hdr hdr""side main panel"}
+
+/* header */
+header{grid-area:hdr;background:var(--surf);border-bottom:1px solid var(--border);display:flex;align-items:center;padding:0 16px;gap:12px}
+.logo{font-family:var(--mono);font-size:11px;font-weight:600;color:var(--accent);border:1px solid var(--accent);padding:3px 7px;letter-spacing:2px}
+.hdr-title{font-size:12px;font-weight:600;color:var(--bright)}
+.hdr-sub{font-size:10px;color:var(--dim);font-family:var(--mono)}
+.hdr-space{flex:1}
+.pulse{width:7px;height:7px;border-radius:50%;background:var(--green);box-shadow:0 0 6px var(--green);animation:pulse 2s ease-in-out infinite;flex-shrink:0}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.3}}
+.hdr-sys{display:flex;align-items:center;gap:6px;font-family:var(--mono);font-size:10px;color:var(--dim)}
+#clock{font-family:var(--mono);font-size:10px;color:var(--dim);margin-left:8px}
+.scraper-badge{font-family:var(--mono);font-size:9px;padding:2px 6px;border-radius:10px;background:var(--surf2);border:1px solid var(--border);color:var(--dim);cursor:pointer;transition:all .15s}
+.scraper-badge.running{border-color:var(--yellow);color:var(--yellow)}
+.scraper-badge.done{border-color:var(--green);color:var(--green)}
+.btn-refresh{font-family:var(--mono);font-size:10px;padding:3px 8px;background:none;border:1px solid var(--border2);color:var(--dim);border-radius:3px;cursor:pointer;transition:all .15s}
+.btn-refresh:hover{border-color:var(--accent);color:var(--accent)}
+
+/* sidebar */
+#side{grid-area:side;background:var(--surf);border-right:1px solid var(--border);overflow-y:auto;display:flex;flex-direction:column;min-height:0}
+.s-section{border-bottom:1px solid var(--border);padding:12px 14px}
+.s-label{font-family:var(--mono);font-size:9px;color:var(--dim);letter-spacing:1.5px;text-transform:uppercase;margin-bottom:8px}
+
+/* stat cards */
+.stat-grid{display:grid;grid-template-columns:1fr 1fr;gap:6px}
+.stat{background:var(--surf2);border:1px solid var(--border);border-radius:3px;padding:8px 10px}
+.stat-v{font-family:var(--mono);font-size:20px;font-weight:600;color:var(--bright);line-height:1}
+.stat-l{font-size:9px;color:var(--dim);margin-top:2px;letter-spacing:.5px;text-transform:uppercase}
+.stat.red .stat-v{color:var(--red)}
+.stat.yellow .stat-v{color:var(--yellow)}
+.stat.green .stat-v{color:var(--green)}
+.stat.cyan .stat-v{color:var(--cyan)}
+
+/* nav tabs */
+.nav{display:flex;flex-direction:column;gap:2px;padding:6px 8px}
+.nav-btn{display:flex;align-items:center;gap:8px;padding:7px 8px;border-radius:4px;cursor:pointer;background:none;border:none;color:var(--dim);font-size:12px;font-family:var(--sans);width:100%;text-align:left;transition:all .15s}
+.nav-btn:hover{background:var(--surf2);color:var(--text)}
+.nav-btn.active{background:var(--surf3);color:var(--bright);border-left:2px solid var(--accent)}
+.nav-icon{font-size:14px;width:18px;text-align:center}
+
+/* sev filter */
+.sev-list{display:flex;flex-direction:column;gap:4px}
+.sev-row{display:flex;align-items:center;gap:7px;padding:4px 5px;border-radius:3px;cursor:pointer;transition:background .1s}
+.sev-row:hover{background:var(--surf2)}
+.sev-dot{width:9px;height:9px;border-radius:50%;flex-shrink:0}
+.sev-lbl{font-size:11px;flex:1}
+.sev-cnt{font-family:var(--mono);font-size:10px;color:var(--dim)}
+
+/* type chips */
+.type-grid{display:flex;flex-wrap:wrap;gap:5px}
+.type-chip{font-size:10px;font-family:var(--mono);padding:2px 6px;border-radius:10px;border:1px solid var(--border2);color:var(--dim);cursor:pointer;transition:all .15s;background:var(--surf2)}
+.type-chip.on{border-color:var(--accent);color:var(--accent)}
+
+/* main area */
+#main{grid-area:main;background:var(--bg);min-height:0;overflow:hidden;display:flex;flex-direction:column}
+.view{display:none;flex:1;overflow-y:auto;overflow-x:hidden;min-height:0}
+.view.active{display:flex;flex-direction:column}
+#map-view{overflow:hidden;position:relative}
+#map-view.active{display:block}
+#map{width:100%;height:100%;position:absolute;inset:0}
+
+/* map controls */
+.map-top{position:absolute;top:10px;left:10px;z-index:999;display:flex;gap:6px}
+.map-btn{background:var(--surf);border:1px solid var(--border);color:var(--text);font-family:var(--mono);font-size:10px;padding:4px 9px;border-radius:3px;cursor:pointer;transition:all .15s}
+.map-btn:hover,.map-btn.on{border-color:var(--accent);color:var(--accent)}
+.map-tr{position:absolute;top:10px;right:10px;z-index:999}
+.map-tr select{background:var(--surf);border:1px solid var(--border);color:var(--text);font-family:var(--mono);font-size:10px;padding:4px 8px;border-radius:3px}
+
+/* analytics grid */
+.a-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px;padding:14px}
+.a-card{background:var(--surf);border:1px solid var(--border);border-radius:4px;padding:14px}
+.a-card.wide{grid-column:1/-1}
+.a-title{font-family:var(--mono);font-size:10px;color:var(--dim);letter-spacing:1px;text-transform:uppercase;margin-bottom:10px}
+canvas{width:100%!important}
+
+/* bar charts */
+.bar-row{display:flex;align-items:center;gap:7px;margin-bottom:5px}
+.bar-lbl{font-size:10px;color:var(--dim);width:80px;text-align:right;flex-shrink:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-family:var(--mono)}
+.bar-track{flex:1;height:12px;background:var(--surf2);border-radius:2px;overflow:hidden}
+.bar-fill{height:100%;border-radius:2px;transition:width .5s ease}
+.bar-val{font-family:var(--mono);font-size:10px;color:var(--dim);width:28px;text-align:right}
+
+/* hotspot table */
+.htable{width:100%;border-collapse:collapse;font-size:11px}
+.htable th{font-family:var(--mono);font-size:9px;color:var(--dim);text-align:left;padding:4px 8px;border-bottom:1px solid var(--border);letter-spacing:.8px;text-transform:uppercase}
+.htable td{padding:5px 8px;border-bottom:1px solid var(--border)}
+.htable tr:hover td{background:var(--surf2)}
+.risk-badge{font-family:var(--mono);font-size:9px;padding:1px 5px;border-radius:10px}
+.risk-high{background:rgba(248,81,73,.15);color:var(--red);border:1px solid rgba(248,81,73,.3)}
+.risk-med{background:rgba(210,153,34,.15);color:var(--yellow);border:1px solid rgba(210,153,34,.3)}
+.risk-low{background:rgba(63,185,80,.15);color:var(--green);border:1px solid rgba(63,185,80,.3)}
+
+/* prediction cards */
+.pred-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:12px}
+.pred-card{background:var(--surf2);border:1px solid var(--border);border-radius:4px;padding:12px;text-align:center}
+.pred-val{font-family:var(--mono);font-size:26px;font-weight:600;color:var(--bright)}
+.pred-lbl{font-size:10px;color:var(--dim);margin-top:3px}
+.pred-conf{display:inline-block;font-family:var(--mono);font-size:9px;padding:1px 5px;border-radius:10px;margin-top:4px}
+.conf-high{color:var(--green);border:1px solid var(--green);background:rgba(63,185,80,.1)}
+.conf-med{color:var(--yellow);border:1px solid var(--yellow);background:rgba(210,153,34,.1)}
+.conf-low{color:var(--dim);border:1px solid var(--dim)}
+
+/* right panel */
+#panel{grid-area:panel;background:var(--surf);border-left:1px solid var(--border);display:flex;flex-direction:column;overflow:hidden;min-height:0}
+.panel-tabs{display:flex;border-bottom:1px solid var(--border)}
+.ptab{flex:1;padding:9px;font-family:var(--mono);font-size:10px;color:var(--dim);cursor:pointer;text-align:center;background:none;border:none;border-bottom:2px solid transparent;transition:all .15s}
+.ptab.active{color:var(--accent);border-bottom-color:var(--accent)}
+.ptab-body{flex:1;overflow-y:auto;padding:10px}
+.ptab-pane{display:none}.ptab-pane.active{display:block}
+
+/* incident cards */
+.inc-card{background:var(--surf2);border:1px solid var(--border);border-radius:3px;padding:9px 11px;margin-bottom:7px;cursor:pointer;transition:border-color .15s;border-left:3px solid transparent;position:relative}
+.inc-card:hover{border-color:var(--border2)}
+.s1{border-left-color:var(--s1)}.s2{border-left-color:var(--s2)}.s3{border-left-color:var(--s3)}.s4{border-left-color:var(--s4)}.s5{border-left-color:var(--s5)}
+.inc-top{display:flex;align-items:flex-start;gap:5px;margin-bottom:4px}
+.sev-tag{font-family:var(--mono);font-size:9px;padding:1px 4px;border-radius:2px;font-weight:600;flex-shrink:0;margin-top:1px}
+.st1{background:var(--s1);color:#000}.st2{background:var(--s2);color:#000}.st3{background:var(--s3);color:#fff}.st4{background:var(--s4);color:#fff}.st5{background:var(--s5);color:#fff}
+.inc-title{font-size:11px;font-weight:500;color:var(--bright);line-height:1.35}
+.inc-meta{display:flex;flex-wrap:wrap;gap:5px;font-size:9px;color:var(--dim);font-family:var(--mono)}
+.inc-deaths{font-size:9px;color:var(--red);margin-top:3px;font-family:var(--mono)}
+.inc-sum{font-size:10px;color:var(--dim);margin-top:3px;line-height:1.4}
+.new-tag{font-size:8px;background:var(--red);color:#fff;padding:1px 3px;border-radius:2px;animation:blink 1s step-end infinite}
+@keyframes blink{50%{opacity:0}}
+.resolve-btn{position:absolute;top:7px;right:7px;background:none;border:1px solid var(--border);color:var(--dim);font-size:8px;font-family:var(--mono);padding:1px 4px;border-radius:2px;cursor:pointer}
+.resolve-btn:hover{border-color:var(--green);color:var(--green)}
+.resolved{opacity:.45}
+
+/* detail */
+#detail{display:none;padding:10px}
+#detail.open{display:block}
+.det-back{background:none;border:1px solid var(--border);color:var(--dim);font-family:var(--mono);font-size:10px;padding:3px 7px;border-radius:3px;cursor:pointer;margin-bottom:8px}
+.det-back:hover{border-color:var(--accent);color:var(--accent)}
+.det-title{font-size:12px;font-weight:600;color:var(--bright);margin-bottom:8px;line-height:1.4}
+.det-row{display:flex;justify-content:space-between;padding:4px 0;border-bottom:1px solid var(--border);font-size:10px}
+.det-k{color:var(--dim);font-family:var(--mono)}
+.det-v{color:var(--bright);text-align:right;max-width:55%}
+.ai-box{margin-top:10px;background:var(--surf2);border:1px solid var(--border);border-radius:3px;padding:9px}
+.ai-lbl{font-family:var(--mono);font-size:8px;color:var(--accent);letter-spacing:1px;margin-bottom:5px}
+.ai-text{font-size:11px;line-height:1.5}
+.conf-bar{height:3px;background:var(--border);border-radius:2px;margin-top:6px}
+.conf-fill{height:100%;background:var(--accent);border-radius:2px}
+.det-link{font-size:10px;color:var(--accent);display:block;margin-top:7px;word-break:break-all}
+.det-link:hover{text-decoration:underline}
+
+/* sparkline */
+.sparkline{display:flex;align-items:flex-end;gap:2px;height:28px;margin-top:4px}
+.spark-bar{flex:1;background:var(--accent);border-radius:1px;min-height:2px;opacity:.7}
+
+/* leaflet overrides */
+.leaflet-container{background:#07090d!important;font-family:var(--mono)}
+.leaflet-popup-content-wrapper{background:var(--surf);border:1px solid var(--border);color:var(--text);border-radius:3px;box-shadow:0 4px 20px rgba(0,0,0,.7)}
+.leaflet-popup-tip{background:var(--surf)}
+.leaflet-popup-content{margin:10px 12px;font-size:11px;line-height:1.5}
+.pop-title{font-weight:600;color:var(--bright);margin-bottom:4px;font-size:12px}
+.pop-row{display:flex;gap:6px;font-size:10px;color:var(--dim);margin-top:2px}
+
+/* scrollbar */
+::-webkit-scrollbar{width:4px;height:4px}::-webkit-scrollbar-track{background:transparent}::-webkit-scrollbar-thumb{background:var(--border2);border-radius:2px}
+
+/* scrollable view content */
+.view-scroll{padding:14px 16px;width:100%}
+
+/* section titles */
+.a-section-title{font-family:var(--mono);font-size:10px;color:var(--accent);letter-spacing:1.5px;text-transform:uppercase;padding:14px 0 6px;border-bottom:1px solid var(--border);margin-bottom:10px}
+.a-section-title:first-child{padding-top:2px}
+.a-sub{font-size:9px;color:var(--dim);text-transform:none;letter-spacing:0;font-family:var(--sans);font-weight:400}
+
+/* grid layouts */
+.a-grid2{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px}
+.a-full{margin-bottom:10px}
+@media(max-width:1200px){.a-grid2{grid-template-columns:1fr}}
+
+/* findings grid */
+.findings-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:10px}
+.finding-card{background:var(--surf2);border:1px solid var(--border);border-radius:4px;padding:10px 12px}
+.finding-val{font-family:var(--mono);font-size:18px;font-weight:600;color:var(--bright);line-height:1.1}
+.finding-lbl{font-size:10px;color:var(--dim);margin-top:3px;line-height:1.4}
+.finding-card.warn .finding-val{color:var(--yellow)}
+.finding-card.danger .finding-val{color:var(--red)}
+.finding-card.good .finding-val{color:var(--green)}
+.finding-card.accent .finding-val{color:var(--accent)}
+
+/* heatmap */
+.heatmap-wrap{display:flex;gap:0;align-items:flex-start;min-width:600px}
+.hm-ylabels{display:flex;flex-direction:column;gap:2px;padding-top:22px;margin-right:6px}
+.hm-ylabel{font-family:var(--mono);font-size:9px;color:var(--dim);height:18px;display:flex;align-items:center;white-space:nowrap}
+.hm-body{flex:1}
+.hm-xlabels{display:flex;gap:2px;margin-bottom:3px}
+.hm-xlabel{font-family:var(--mono);font-size:9px;color:var(--dim);flex:1;text-align:center}
+.hm-row{display:flex;gap:2px;margin-bottom:2px}
+.hm-cell{flex:1;height:18px;border-radius:2px;cursor:pointer;transition:opacity .15s;position:relative}
+.hm-cell:hover{opacity:.75;outline:1px solid var(--accent)}
+.hm-legend{display:flex;align-items:center;gap:6px;margin-top:8px;font-size:10px;color:var(--dim);font-family:var(--mono)}
+.hm-legend-cells{display:flex;gap:2px}
+.hm-legend-cell{width:16px;height:10px;border-radius:1px}
+
+/* yoy change badges */
+.chg-pos{color:var(--red);font-family:var(--mono);font-size:10px}
+.chg-neg{color:var(--green);font-family:var(--mono);font-size:10px}
+.chg-neu{color:var(--dim);font-family:var(--mono);font-size:10px}
+
+/* data explorer */
+.de-toolbar{display:flex;align-items:center;gap:8px;padding:12px 14px;border-bottom:1px solid var(--border);flex-wrap:wrap;background:var(--surf);position:sticky;top:0;z-index:10}
+.de-search{flex:1;min-width:180px;background:var(--surf2);border:1px solid var(--border2);color:var(--text);font-family:var(--mono);font-size:11px;padding:5px 10px;border-radius:3px;outline:none}
+.de-search:focus{border-color:var(--accent)}
+.de-select{background:var(--surf2);border:1px solid var(--border2);color:var(--text);font-family:var(--mono);font-size:11px;padding:5px 8px;border-radius:3px}
+.de-btn{font-family:var(--mono);font-size:10px;padding:5px 10px;border-radius:3px;cursor:pointer;border:1px solid var(--border2);background:var(--surf2);color:var(--dim);transition:all .15s;white-space:nowrap}
+.de-btn:hover{border-color:var(--accent);color:var(--accent)}
+.de-btn.csv{border-color:var(--green);color:var(--green)}
+.de-btn.csv:hover{background:rgba(63,185,80,.1)}
+.de-btn.excel{border-color:var(--cyan);color:var(--cyan)}
+.de-btn.excel:hover{background:rgba(57,197,207,.1)}
+.de-count{font-family:var(--mono);font-size:10px;color:var(--dim);white-space:nowrap}
+.de-table-wrap{overflow:auto;flex:1}
+.de-table{width:100%;border-collapse:collapse;font-size:11px}
+.de-table th{font-family:var(--mono);font-size:9px;color:var(--dim);text-align:left;padding:6px 10px;border-bottom:2px solid var(--border2);letter-spacing:.8px;text-transform:uppercase;position:sticky;top:0;background:var(--surf);cursor:pointer;white-space:nowrap;user-select:none}
+.de-table th:hover{color:var(--accent)}
+.de-table th.sort-asc::after{content:" ↑"}
+.de-table th.sort-desc::after{content:" ↓"}
+.de-table td{padding:5px 10px;border-bottom:1px solid var(--border);vertical-align:top;max-width:260px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.de-table tr:hover td{background:var(--surf2)}
+.de-table tr.clicked td{background:var(--surf3)}
+.de-sev{font-family:var(--mono);font-size:9px;padding:1px 4px;border-radius:2px;font-weight:600}
+.de-pagination{display:flex;align-items:center;gap:6px;padding:8px 14px;border-top:1px solid var(--border);background:var(--surf);font-family:var(--mono);font-size:10px;color:var(--dim)}
+.pg-btn{background:none;border:1px solid var(--border2);color:var(--dim);font-family:var(--mono);font-size:10px;padding:3px 8px;border-radius:3px;cursor:pointer}
+.pg-btn:hover:not(:disabled){border-color:var(--accent);color:var(--accent)}
+.pg-btn:disabled{opacity:.3;cursor:default}
+#data-view.active{display:flex!important;flex-direction:column}
+</style>
+</head>
+<body>
+<div class="scan-line"></div>
+
+<div id="shell">
+<!-- ── Header ─────────────────────────────────────────────────────── -->
+<header>
+  <div class="logo">MCI·RW</div>
+  <div>
+    <div class="hdr-title">Rwanda Mass Casualty Incident Surveillance</div>
+    <div class="hdr-sub">Historical + Real-Time · AI-Assisted Classification</div>
+  </div>
+  <div class="hdr-space"></div>
+  <span id="scraper-badge" class="scraper-badge">Loading…</span>
+  <button class="btn-refresh" onclick="manualRefresh()">↻ Refresh</button>
+  <div class="hdr-sys"><div class="pulse"></div><span id="sys-lbl">LIVE</span></div>
+  <div id="clock"></div>
+</header>
+
+<!-- ── Sidebar ────────────────────────────────────────────────────── -->
+<aside id="side">
+  <!-- Stats -->
+  <div class="s-section">
+    <div class="s-label">Overview</div>
+    <div class="stat-grid">
+      <div class="stat cyan"><div class="stat-v" id="st-total">—</div><div class="stat-l">Incidents</div></div>
+      <div class="stat red"><div class="stat-v" id="st-deaths">—</div><div class="stat-l">Deaths</div></div>
+      <div class="stat yellow"><div class="stat-v" id="st-injured">—</div><div class="stat-l">Injured</div></div>
+      <div class="stat green"><div class="stat-v" id="st-24h">—</div><div class="stat-l">Last 24 h</div></div>
+    </div>
+  </div>
+
+  <!-- Navigation -->
+  <div class="s-section" style="padding:8px">
+    <div class="s-label" style="padding:0 6px">Views</div>
+    <div class="nav">
+      <button class="nav-btn active" onclick="switchView('map')"><span class="nav-icon">🗺</span>Incident Map</button>
+      <button class="nav-btn" onclick="switchView('analytics')"><span class="nav-icon">📊</span>Analytics</button>
+      <button class="nav-btn" onclick="switchView('trends')"><span class="nav-icon">📈</span>Trends</button>
+      <button class="nav-btn" onclick="switchView('predictions')"><span class="nav-icon">🔮</span>Predictions</button>
+      <button class="nav-btn" onclick="switchView('data')"><span class="nav-icon">🗄</span>Data Explorer</button>
+    </div>
+  </div>
+
+  <!-- Severity filter -->
+  <div class="s-section">
+    <div class="s-label">Severity</div>
+    <div class="sev-list">
+      <label class="sev-row"><input type="checkbox" value="5" checked onchange="applyFilters()"><span class="sev-dot" style="background:var(--s5)"></span><span class="sev-lbl">Catastrophic</span><span class="sev-cnt" id="sc5">0</span></label>
+      <label class="sev-row"><input type="checkbox" value="4" checked onchange="applyFilters()"><span class="sev-dot" style="background:var(--s4)"></span><span class="sev-lbl">Critical</span><span class="sev-cnt" id="sc4">0</span></label>
+      <label class="sev-row"><input type="checkbox" value="3" checked onchange="applyFilters()"><span class="sev-dot" style="background:var(--s3)"></span><span class="sev-lbl">Serious</span><span class="sev-cnt" id="sc3">0</span></label>
+      <label class="sev-row"><input type="checkbox" value="2" checked onchange="applyFilters()"><span class="sev-dot" style="background:var(--s2)"></span><span class="sev-lbl">Moderate</span><span class="sev-cnt" id="sc2">0</span></label>
+      <label class="sev-row"><input type="checkbox" value="1" checked onchange="applyFilters()"><span class="sev-dot" style="background:var(--s1)"></span><span class="sev-lbl">Minor</span><span class="sev-cnt" id="sc1">0</span></label>
+    </div>
+  </div>
+
+  <!-- Type filter -->
+  <div class="s-section">
+    <div class="s-label">Incident Type</div>
+    <div class="type-grid" id="type-chips"></div>
+  </div>
+</aside>
+
+<!-- ── Main area ──────────────────────────────────────────────────── -->
+<main id="main">
+  <!-- Map view -->
+  <div class="view active" id="map-view">
+    <div class="map-top">
+      <button class="map-btn on" id="btn-all" onclick="setMapMode('all')">All History</button>
+      <button class="map-btn" id="btn-recent" onclick="setMapMode('recent')">Recent 72h</button>
+      <button class="map-btn" id="btn-deaths" onclick="setMapMode('deaths')">Deaths Only</button>
+    </div>
+    <div class="map-tr">
+      <select id="time-sel" onchange="fetchMapData()">
+        <option value="72">Last 72 h</option>
+        <option value="168">Last 7 days</option>
+        <option value="720">Last 30 days</option>
+        <option value="8760">Last year</option>
+        <option value="99999" selected>All time</option>
+      </select>
+    </div>
+    <div id="map"></div>
+  </div>
+
+  <!-- Analytics view -->
+  <div class="view" id="analytics-view">
+    <div class="view-scroll">
+
+      <!-- Section: Key Findings -->
+      <div class="a-section-title">📋 Key Findings</div>
+      <div id="peak-findings" class="findings-grid"></div>
+
+      <!-- Section: Incident Overview -->
+      <div class="a-section-title">📊 Incident Overview</div>
+      <div class="a-grid2">
+        <div class="a-card">
+          <div class="a-title">Deaths by Incident Type</div>
+          <div id="chart-types"></div>
+        </div>
+        <div class="a-card">
+          <div class="a-title">Case Fatality Rate by Type <span class="a-sub">(deaths ÷ total affected)</span></div>
+          <div id="chart-cfr"></div>
+        </div>
+      </div>
+
+      <!-- Section: Hotspots -->
+      <div class="a-section-title">📍 Geographic Hotspots</div>
+      <div class="a-grid2">
+        <div class="a-card">
+          <div class="a-title">Top Districts by Deaths</div>
+          <div id="chart-hotspots"></div>
+        </div>
+        <div class="a-card">
+          <div class="a-title">Deaths by Province</div>
+          <div id="chart-province"></div>
+        </div>
+      </div>
+      <div class="a-card a-full">
+        <div class="a-title">District Hotspot Table — Risk Score = incidents×1 + deaths×2 + avg_severity×1.5</div>
+        <div style="overflow-x:auto">
+        <table class="htable" id="hotspot-table">
+          <thead><tr><th>District</th><th>Province</th><th>Incidents</th><th>Deaths</th><th>Injured</th><th>Dominant Type</th><th>Risk Score</th></tr></thead>
+          <tbody id="hotspot-tbody"></tbody>
+        </table>
+        </div>
+      </div>
+
+      <!-- Section: Deadliest Incidents -->
+      <div class="a-section-title">💀 Deadliest Single Incidents (All Time)</div>
+      <div class="a-card a-full">
+        <div style="overflow-x:auto">
+        <table class="htable" id="deadliest-table">
+          <thead><tr><th>#</th><th>Date</th><th>Title</th><th>Type</th><th>District</th><th>Deaths</th><th>Injured</th><th>Source</th></tr></thead>
+          <tbody id="deadliest-tbody"></tbody>
+        </table>
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- Trends view -->
+  <div class="view" id="trends-view">
+    <div class="view-scroll">
+
+      <!-- Section: Monthly Calendar Heatmap -->
+      <div class="a-section-title">🗓 Monthly Incident Heatmap — Highest Risk Months</div>
+      <div class="a-card a-full">
+        <div class="a-title">Incidents per Month per Year <span class="a-sub">(darker = more incidents)</span></div>
+        <div id="heatmap-container" style="overflow-x:auto"></div>
+      </div>
+
+      <!-- Section: Temporal Patterns -->
+      <div class="a-section-title">📅 Temporal Patterns</div>
+      <div class="a-grid2">
+        <div class="a-card">
+          <div class="a-title">Average Incidents by Month <span class="a-sub">(seasonal pattern)</span></div>
+          <canvas id="chart-seasonal" height="160"></canvas>
+        </div>
+        <div class="a-card">
+          <div class="a-title">Incidents by Day of Week</div>
+          <canvas id="chart-dow" height="160"></canvas>
+        </div>
+      </div>
+
+      <!-- Section: Long-term trends -->
+      <div class="a-section-title">📈 Long-Term Trends</div>
+      <div class="a-card a-full">
+        <div class="a-title">Monthly Incidents & Deaths with 3-Month Rolling Average</div>
+        <canvas id="chart-monthly" height="100"></canvas>
+      </div>
+      <div class="a-grid2">
+        <div class="a-card">
+          <div class="a-title">Yearly Summary — Incidents & Deaths</div>
+          <canvas id="chart-yearly" height="160"></canvas>
+        </div>
+        <div class="a-card">
+          <div class="a-title">Year-over-Year Change <span class="a-sub">(% vs previous year)</span></div>
+          <canvas id="chart-yoy" height="160"></canvas>
+        </div>
+      </div>
+
+      <!-- Section: Type trends -->
+      <div class="a-section-title">🔀 Incident Type Trends</div>
+      <div class="a-card a-full">
+        <div class="a-title">Deaths by Incident Type per Year</div>
+        <canvas id="chart-typeyear" height="100"></canvas>
+      </div>
+
+      <!-- Section: Province trends -->
+      <div class="a-section-title">🏛 Province Comparison Over Time</div>
+      <div class="a-card a-full">
+        <div class="a-title">Deaths per Province per Year</div>
+        <canvas id="chart-province-trend" height="100"></canvas>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- Predictions view -->
+  <div class="view" id="predictions-view">
+    <div class="view-scroll">
+
+      <div class="a-section-title">🔮 Next Month Forecast</div>
+      <div class="a-card a-full">
+        <div class="pred-grid" id="pred-cards"></div>
+        <p style="font-size:11px;color:var(--dim);margin-top:10px;line-height:1.6">
+          Forecast uses a seasonally-adjusted weighted moving average of historical monthly data.
+          Confidence is higher when more years of data are available. Rwanda rainy seasons
+          (Mar–May, Oct–Nov) are factored into the seasonal adjustment.
+        </p>
+      </div>
+
+      <div class="a-section-title">🔴 High-Risk Districts (Next 30 Days)</div>
+      <div class="a-card a-full">
+        <div style="overflow-x:auto">
+        <table class="htable" id="risk-table">
+          <thead><tr><th>District</th><th>Province</th><th>Historical Incidents</th><th>Historical Deaths</th><th>Recent 90d</th><th>Projected</th><th>Dominant Types</th></tr></thead>
+          <tbody id="risk-tbody"></tbody>
+        </table>
+        </div>
+        <p style="font-size:10px;color:var(--dim);margin-top:8px;font-family:var(--mono)">
+          Projection = (historical avg/month) × seasonal factor for upcoming month
+        </p>
+      </div>
+
+    </div>
+  </div>
+  <!-- Data Explorer view -->
+  <div class="view" id="data-view">
+    <div class="de-toolbar">
+      <input class="de-search" id="de-search" placeholder="Search title, district, type…" oninput="deSearch()">
+      <select class="de-select" id="de-type" onchange="deSearch()">
+        <option value="">All Types</option>
+        <option value="road_accident">Road Accident</option>
+        <option value="flood">Flood</option>
+        <option value="landslide">Landslide</option>
+        <option value="explosion">Explosion</option>
+        <option value="fire">Fire</option>
+        <option value="stampede">Stampede</option>
+        <option value="outbreak">Outbreak</option>
+        <option value="drowning">Drowning</option>
+        <option value="building_collapse">Building Collapse</option>
+        <option value="violence">Violence</option>
+        <option value="other">Other</option>
+      </select>
+      <select class="de-select" id="de-province" onchange="deSearch()">
+        <option value="">All Provinces</option>
+        <option value="Kigali City">Kigali City</option>
+        <option value="Northern">Northern</option>
+        <option value="Southern">Southern</option>
+        <option value="Eastern">Eastern</option>
+        <option value="Western">Western</option>
+      </select>
+      <select class="de-select" id="de-year" onchange="deSearch()">
+        <option value="">All Years</option>
+      </select>
+      <select class="de-select" id="de-mindeaths" onchange="deSearch()">
+        <option value="0">Any deaths</option>
+        <option value="1">≥ 1 death</option>
+        <option value="5">≥ 5 deaths</option>
+        <option value="10">≥ 10 deaths</option>
+      </select>
+      <span class="de-count" id="de-count">— records</span>
+      <button class="de-btn csv" onclick="downloadCSV()">⬇ CSV</button>
+      <button class="de-btn excel" onclick="downloadExcel()">⬇ Excel</button>
+    </div>
+    <div class="de-table-wrap">
+      <table class="de-table">
+        <thead>
+          <tr>
+            <th onclick="deSort('id')">#</th>
+            <th onclick="deSort('event_date')">Date</th>
+            <th onclick="deSort('title')" style="min-width:200px">Title</th>
+            <th onclick="deSort('incident_type')">Type</th>
+            <th onclick="deSort('district')">District</th>
+            <th onclick="deSort('province')">Province</th>
+            <th onclick="deSort('deaths')">Deaths</th>
+            <th onclick="deSort('injured')">Injured</th>
+            <th onclick="deSort('severity')">Sev</th>
+            <th onclick="deSort('source_name')">Source</th>
+            <th>Link</th>
+          </tr>
+        </thead>
+        <tbody id="de-tbody"></tbody>
+      </table>
+    </div>
+    <div class="de-pagination">
+      <button class="pg-btn" id="pg-prev" onclick="dePage(-1)">← Prev</button>
+      <span id="pg-info">Page 1</span>
+      <button class="pg-btn" id="pg-next" onclick="dePage(1)">Next →</button>
+      <span style="margin-left:auto">Showing <span id="pg-range">—</span> of <span id="de-count2">—</span></span>
+    </div>
+  </div>
+</main>
+
+<!-- ── Right Panel ────────────────────────────────────────────────── -->
+<aside id="panel">
+  <div class="panel-tabs">
+    <button class="ptab active" onclick="switchPTab('feed')">Feed</button>
+    <button class="ptab" onclick="switchPTab('scraper')">Scraper</button>
+  </div>
+  <div class="ptab-body">
+    <div class="ptab-pane active" id="pt-feed">
+      <div id="inc-list"></div>
+    </div>
+    <div class="ptab-pane" id="pt-scraper">
+      <div id="scraper-info"></div>
+    </div>
+  </div>
+  <div id="detail"></div>
+</aside>
+</div>
+
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<script>
+/* ── globals ──────────────────────────────────────────────────────── */
+const SEV_COL  = {1:"#3fb950",2:"#d29922",3:"#db6d28",4:"#f85149",5:"#bc8cff"};
+const SEV_LBL  = {1:"Minor",2:"Moderate",3:"Serious",4:"Critical",5:"Catastrophic"};
+const TYPE_COL = {
+  road_accident:"#58a6ff", flood:"#39c5cf", landslide:"#db6d28",
+  explosion:"#f85149",  fire:"#ff7b72",  stampede:"#d29922",
+  outbreak:"#a371f7",  drowning:"#388bfd", building_collapse:"#bc8cff",
+  violence:"#ff5252",  other:"#484f58"
+};
+const CHART_DEFAULTS = {
+  color:"#c9d1d9",
+  plugins:{legend:{labels:{color:"#484f58",font:{size:10,family:"IBM Plex Mono"}}}},
+  scales:{x:{ticks:{color:"#484f58",font:{size:9}},grid:{color:"#21262d"}},
+           y:{ticks:{color:"#484f58",font:{size:9}},grid:{color:"#21262d"}}}
+};
+
+let map, markerLayer;
+let allIncidents = [], filteredIncs = [];
+let mapMode = "all";
+let charts  = {};
+let activeTypes = new Set();
+
+/* ── clock ────────────────────────────────────────────────────────── */
+setInterval(()=>{
+  document.getElementById("clock").textContent =
+    new Date().toUTCString().replace(" GMT","")+" UTC";
+},1000);
+
+/* ── map ──────────────────────────────────────────────────────────── */
+function initMap(){
+  map = L.map("map",{center:[-1.94,29.87],zoom:8,zoomControl:false});
+  L.control.zoom({position:"bottomleft"}).addTo(map);
+  L.tileLayer("https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png",{
+    attribution:"© OpenStreetMap © CARTO",subdomains:"abcd",maxZoom:19
+  }).addTo(map);
+  markerLayer = L.layerGroup().addTo(map);
+}
+
+function makeIcon(sev, deaths){
+  const c = SEV_COL[sev]||"#484f58";
+  const r = Math.min(18, 8 + (deaths||0)*0.4);
+  return L.divIcon({
+    className:"",
+    html:`<div style="width:${r*2}px;height:${r*2}px;border-radius:50%;background:${c};
+      border:2px solid rgba(255,255,255,.25);box-shadow:0 0 ${r}px ${c}66;
+      display:flex;align-items:center;justify-content:center;
+      font-size:${Math.min(10,7+deaths*0.1)}px;font-weight:700;color:rgba(0,0,0,.6);
+      font-family:IBM Plex Mono">${deaths>0?deaths:""}</div>`,
+    iconSize:[r*2,r*2], iconAnchor:[r,r]
+  });
+}
+
+function renderMapMarkers(){
+  markerLayer.clearLayers();
+  filteredIncs.forEach(inc=>{
+    if(!inc.latitude||!inc.longitude) return;
+    const m = L.marker([inc.latitude,inc.longitude],{icon:makeIcon(inc.severity,inc.deaths)});
+    m.bindPopup(`
+      <div class="pop-title">${inc.title.slice(0,80)}${inc.title.length>80?"…":""}</div>
+      <div style="color:${SEV_COL[inc.severity]};font-size:10px">${SEV_LBL[inc.severity]} · Severity ${inc.severity}</div>
+      <div class="pop-row"><span>📍 ${inc.district||inc.location}</span><span>${inc.source_name}</span></div>
+      ${inc.deaths>0?`<div style="color:var(--red);font-size:10px;margin-top:3px">💀 ${inc.deaths} deaths</div>`:""}
+      ${inc.injured>0?`<div style="font-size:10px;margin-top:1px">🤕 ${inc.injured} injured</div>`:""}
+      ${inc.ai_summary?`<div style="margin-top:5px;font-size:10px">${inc.ai_summary}</div>`:""}
+      <div style="font-size:9px;color:#484f58;margin-top:4px">${inc.event_date||inc.detected_at?.slice(0,10)}</div>
+    `,{maxWidth:260});
+    markerLayer.addLayer(m);
+  });
+}
+
+/* ── data fetching ────────────────────────────────────────────────── */
+async function fetchMapData(){
+  try{
+    const mode = mapMode;
+    let url = "/api/incidents/map?min_deaths=0";
+    if(mode==="recent"){
+      const h = document.getElementById("time-sel").value;
+      const r = await fetch(`/api/incidents/recent?hours=${h}&min_severity=1`);
+      allIncidents = await r.json();
+    } else if(mode==="deaths"){
+      const r = await fetch("/api/incidents/map?min_deaths=1");
+      allIncidents = await r.json();
+    } else {
+      const r = await fetch("/api/incidents/map?min_deaths=0");
+      allIncidents = await r.json();
+    }
+    buildTypeChips();
+    applyFilters();
+  }catch(e){console.error(e)}
+}
+
+async function fetchStats(){
+  try{
+    const r = await fetch("/api/stats"); const s=await r.json();
+    document.getElementById("st-total").textContent  = s.total_incidents||0;
+    document.getElementById("st-deaths").textContent = s.total_deaths||0;
+    document.getElementById("st-injured").textContent= s.total_injured||0;
+    document.getElementById("st-24h").textContent    = s.last_24h||0;
+    // sev counts
+    const bySev={};
+    // count from allIncidents
+    allIncidents.forEach(i=>bySev[i.severity]=(bySev[i.severity]||0)+1);
+    [1,2,3,4,5].forEach(s=>{ const el=document.getElementById(`sc${s}`); if(el) el.textContent=bySev[s]||0; });
+  }catch(e){}
+}
+
+async function fetchScraperStatus(){
+  try{
+    const r=await fetch("/api/scraper/status"); const s=await r.json();
+    const badge=document.getElementById("scraper-badge");
+    if(s.historical_complete){
+      badge.className="scraper-badge done";
+      badge.textContent=`✓ ${s.total_incidents} incidents`;
+    } else {
+      badge.className="scraper-badge running";
+      badge.textContent="⟳ Scraping…";
+    }
+    // scraper panel
+    const log = (s.scrape_log||[]).map(l=>`
+      <div style="font-size:10px;font-family:var(--mono);padding:5px 0;border-bottom:1px solid var(--border)">
+        <div style="color:var(--bright)">${l.source?.slice(0,35)}</div>
+        <div style="color:var(--dim);margin-top:2px">${l.scrape_type} · +${l.total_added||0} added · ${l.last_run?.slice(0,16)||"—"}</div>
+      </div>`).join("");
+    document.getElementById("scraper-info").innerHTML=`
+      <div style="margin-bottom:8px">
+        <div style="font-family:var(--mono);font-size:9px;color:var(--dim);letter-spacing:1px;text-transform:uppercase;margin-bottom:6px">STATUS</div>
+        <div style="font-size:11px;color:var(--bright)">Historical: <span style="color:${s.historical_complete?'var(--green)':'var(--yellow)'}">${s.historical_complete?'Complete':'Running…'}</span></div>
+        <div style="font-size:11px;color:var(--bright);margin-top:4px">Last refresh: <span style="color:var(--dim)">${s.last_incremental?.slice(0,16)||'Never'}</span></div>
+        <div style="font-size:11px;color:var(--bright);margin-top:4px">Total incidents: <span style="color:var(--cyan)">${s.total_incidents}</span></div>
+        <div style="font-size:11px;color:var(--bright);margin-top:4px">Historical records: <span style="color:var(--dim)">${s.historical_incidents}</span></div>
+      </div>
+      <div style="display:flex;gap:6px;margin-bottom:10px">
+        <button onclick="manualRefresh()" style="flex:1;background:none;border:1px solid var(--border2);color:var(--dim);font-family:var(--mono);font-size:10px;padding:5px;border-radius:3px;cursor:pointer">↻ Incremental</button>
+        <button onclick="runHistorical()" style="flex:1;background:none;border:1px solid var(--border2);color:var(--dim);font-family:var(--mono);font-size:10px;padding:5px;border-radius:3px;cursor:pointer">⏳ Historical</button>
+      </div>
+      <div style="font-family:var(--mono);font-size:9px;color:var(--dim);letter-spacing:1px;text-transform:uppercase;margin-bottom:4px">RECENT SCRAPE LOG</div>
+      ${log||'<div style="color:var(--dim);font-size:10px">No scrape logs yet</div>'}
+    `;
+  }catch(e){}
+}
+
+/* ── type chips ───────────────────────────────────────────────────── */
+function buildTypeChips(){
+  const types = [...new Set(allIncidents.map(i=>i.incident_type).filter(Boolean))];
+  if(activeTypes.size===0) types.forEach(t=>activeTypes.add(t));
+  const el = document.getElementById("type-chips");
+  el.innerHTML = types.map(t=>`
+    <span class="type-chip ${activeTypes.has(t)?'on':''}"
+      onclick="toggleType('${t}')" style="border-color:${activeTypes.has(t)?TYPE_COL[t]||'var(--accent)':''}">
+      ${t.replace("_"," ")}
+    </span>`).join("");
+}
+
+function toggleType(t){
+  if(activeTypes.has(t)) activeTypes.delete(t); else activeTypes.add(t);
+  buildTypeChips();
+  applyFilters();
+}
+
+/* ── filters ──────────────────────────────────────────────────────── */
+function applyFilters(){
+  const activeSev = new Set([...document.querySelectorAll(".sev-list input:checked")].map(i=>+i.value));
+  filteredIncs = allIncidents.filter(i=>activeSev.has(i.severity)&&(activeTypes.size===0||activeTypes.has(i.incident_type)));
+  renderMapMarkers();
+  renderFeed();
+  fetchStats();
+}
+
+/* ── feed ─────────────────────────────────────────────────────────── */
+function relTime(ts){
+  const d=Date.now()-new Date(ts).getTime(), m=Math.floor(d/60000);
+  return m<60?`${m}m ago`:m<1440?`${Math.floor(m/60)}h ago`:`${Math.floor(m/1440)}d ago`;
+}
+function renderFeed(){
+  const el=document.getElementById("inc-list");
+  const fresh=i=>new Date(i.detected_at)>new Date(Date.now()-300000);
+  el.innerHTML=(filteredIncs.slice(0,100)||[]).map(i=>`
+    <div class="inc-card s${i.severity} ${i.status==='resolved'?'resolved':''}" onclick="showDetail(${i.id})">
+      <button class="resolve-btn" onclick="event.stopPropagation();resolveInc(${i.id},this)">✓</button>
+      <div class="inc-top">
+        <span class="sev-tag st${i.severity}">S${i.severity}</span>
+        <span class="inc-title">${i.title.slice(0,75)}${i.title.length>75?"…":""}${fresh(i)?'<span class="new-tag">NEW</span>':""}</span>
+      </div>
+      <div class="inc-meta">
+        <span>📍${i.district||i.location||"Rwanda"}</span>
+        <span>${i.incident_type?.replace("_"," ")||""}</span>
+        <span style="margin-left:auto">${relTime(i.detected_at)}</span>
+      </div>
+      ${i.deaths>0?`<div class="inc-deaths">💀 ${i.deaths} deaths${i.injured>0?` · 🤕 ${i.injured} injured`:""}</div>`:""}
+      ${i.ai_summary?`<div class="inc-sum">${i.ai_summary.slice(0,100)}…</div>`:""}
+    </div>`).join("")||`<div style="color:var(--dim);font-size:11px;padding:16px;text-align:center">No incidents match filters</div>`;
+}
+
+/* ── detail ───────────────────────────────────────────────────────── */
+async function showDetail(id){
+  switchPTab("feed");
+  let inc = allIncidents.find(i=>i.id===id);
+  if(!inc){const r=await fetch(`/api/incidents/${id}`);inc=await r.json();}
+  document.getElementById("inc-list").style.display="none";
+  const det=document.getElementById("detail");
+  det.className="open";
+  const conf=Math.round((inc.ai_confidence||0)*100);
+  det.innerHTML=`
+    <button class="det-back" onclick="closeDetail()">← Back</button>
+    <div class="det-title">${inc.title}</div>
+    <div class="det-row"><span class="det-k">Severity</span><span class="det-v" style="color:${SEV_COL[inc.severity]}">${SEV_LBL[inc.severity]} (${inc.severity}/5)</span></div>
+    <div class="det-row"><span class="det-k">Type</span><span class="det-v">${inc.incident_type?.replace("_"," ")||"Unknown"}</span></div>
+    <div class="det-row"><span class="det-k">District</span><span class="det-v">${inc.district||"Unknown"}</span></div>
+    <div class="det-row"><span class="det-k">Province</span><span class="det-v">${inc.province||"Unknown"}</span></div>
+    <div class="det-row"><span class="det-k">Deaths</span><span class="det-v" style="color:var(--red)">${inc.deaths||0}</span></div>
+    <div class="det-row"><span class="det-k">Injured</span><span class="det-v">${inc.injured||0}</span></div>
+    <div class="det-row"><span class="det-k">Missing</span><span class="det-v">${inc.missing||0}</span></div>
+    <div class="det-row"><span class="det-k">Event date</span><span class="det-v">${inc.event_date||"Unknown"}</span></div>
+    <div class="det-row"><span class="det-k">Source</span><span class="det-v">${inc.source_name}</span></div>
+    <div class="det-row"><span class="det-k">Media</span><span class="det-v">${inc.media_type}</span></div>
+    <div class="det-row"><span class="det-k">Detected</span><span class="det-v">${inc.detected_at?.slice(0,16)}</span></div>
+    <div class="det-row"><span class="det-k">Historical</span><span class="det-v">${inc.is_historical?"Yes":"No"}</span></div>
+    ${inc.ai_summary?`<div class="ai-box"><div class="ai-lbl">🤖 AI ASSESSMENT</div><div class="ai-text">${inc.ai_summary}</div><div class="conf-bar"><div class="conf-fill" style="width:${conf}%"></div></div><div style="font-size:9px;color:var(--dim);margin-top:4px;font-family:var(--mono)">Confidence: ${conf}%</div></div>`:""}
+    ${inc.source_url?`<a class="det-link" href="${inc.source_url}" target="_blank">↗ View source</a>`:""}
+  `;
+}
+function closeDetail(){
+  document.getElementById("detail").className="";
+  document.getElementById("detail").innerHTML="";
+  document.getElementById("inc-list").style.display="";
+}
+async function resolveInc(id,btn){
+  await fetch(`/api/incidents/${id}/status`,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({status:"resolved"})});
+  btn.closest(".inc-card").classList.add("resolved");
+  const i=allIncidents.find(x=>x.id===id); if(i) i.status="resolved";
+}
+
+/* ── views ────────────────────────────────────────────────────────── */
+function switchView(name){
+  document.querySelectorAll(".view").forEach(v=>v.classList.remove("active"));
+  document.getElementById(name+"-view").classList.add("active");
+  document.querySelectorAll(".nav-btn").forEach((b,i)=>{
+    b.classList.toggle("active",["map","analytics","trends","predictions","data"][i]===name);
+  });
+  if(name==="analytics")   loadAnalytics();
+  if(name==="trends")      loadTrends();
+  if(name==="predictions") loadPredictions();
+  if(name==="data")        loadDataExplorer();
+}
+function setMapMode(mode){
+  mapMode=mode;
+  document.querySelectorAll(".map-btn").forEach(b=>b.classList.remove("on"));
+  document.getElementById("btn-"+mode).classList.add("on");
+  fetchMapData();
+}
+function switchPTab(name){
+  document.querySelectorAll(".ptab").forEach((b,i)=>b.classList.toggle("active",["feed","scraper"][i]===name));
+  document.querySelectorAll(".ptab-pane").forEach((p,i)=>p.classList.toggle("active",["pt-feed","pt-scraper"][i]===`pt-${name}`));
+}
+
+/* ── chart config ─────────────────────────────────────────────────── */
+function destroyChart(id){ if(charts[id]){charts[id].destroy();delete charts[id];} }
+const CFG = {
+  responsive:true,
+  plugins:{legend:{labels:{color:"#484f58",font:{size:9,family:"IBM Plex Mono"},boxWidth:10}}},
+  scales:{
+    x:{ticks:{color:"#484f58",font:{size:9},maxRotation:45},grid:{color:"#21262d"}},
+    y:{ticks:{color:"#484f58",font:{size:9}},grid:{color:"#21262d"}}
+  }
+};
+
+/* ── BAR HELPER ───────────────────────────────────────────────────── */
+function barChart(elId, labels, datasets, extra={}){
+  destroyChart(elId);
+  const el = document.getElementById(elId);
+  if(!el) return;
+  charts[elId] = new Chart(el, {type:"bar", data:{labels,datasets}, options:{...CFG,...extra}});
+}
+function lineChart(elId, labels, datasets, extra={}){
+  destroyChart(elId);
+  const el = document.getElementById(elId);
+  if(!el) return;
+  charts[elId] = new Chart(el, {type:"line", data:{labels,datasets}, options:{...CFG,...extra}});
+}
+
+/* ── ANALYTICS VIEW ───────────────────────────────────────────────── */
+async function loadAnalytics(){
+  const [types, hotspots, cfr, deadliest, peaks] = await Promise.all([
+    fetch("/api/analytics/types").then(r=>r.json()),
+    fetch("/api/analytics/hotspots").then(r=>r.json()),
+    fetch("/api/analytics/cfr").then(r=>r.json()),
+    fetch("/api/analytics/deadliest?limit=20").then(r=>r.json()),
+    fetch("/api/analytics/peak-months").then(r=>r.json()),
+  ]);
+
+  // ── Key Findings cards ────────────────────────────────────────────
+  const f = peaks;
+  document.getElementById("peak-findings").innerHTML = [
+    {val: f.peak_month||"—",   lbl:`Peak month for incidents (avg ${f.peak_month_avg_inc||0}/month)`, cls:"warn"},
+    {val: f.peak_day||"—",     lbl:`Most incident-prone day of week (${f.peak_day_incidents||0} total)`, cls:"warn"},
+    {val: f.worst_year||"—",   lbl:`Worst year on record (${f.worst_year_deaths||0} deaths)`, cls:"danger"},
+    {val: `${f.rainy_vs_dry_ratio||"—"}×`, lbl:`More incidents in rainy season vs dry (Mar–May, Oct–Nov)`, cls:"accent"},
+    {val: f.low_month||"—",    lbl:`Safest month historically`, cls:"good"},
+    {val: `${f.years_of_data||0} yrs`, lbl:`Data coverage: ${f.data_from||"?"} – ${f.data_to||"?"}`, cls:""},
+  ].map(c=>`
+    <div class="finding-card ${c.cls}">
+      <div class="finding-val">${c.val}</div>
+      <div class="finding-lbl">${c.lbl}</div>
+    </div>`).join("");
+
+  // ── Deaths by type bar ────────────────────────────────────────────
+  const maxD = Math.max(...types.map(t=>t.total_deaths||0),1);
+  document.getElementById("chart-types").innerHTML = types.map(t=>`
+    <div class="bar-row">
+      <div class="bar-lbl">${(t.incident_type||"other").replace("_"," ")}</div>
+      <div class="bar-track"><div class="bar-fill" style="width:${(t.total_deaths||0)/maxD*100}%;background:${TYPE_COL[t.incident_type]||'#484f58'}"></div></div>
+      <div class="bar-val">${t.total_deaths||0}</div>
+      <div style="font-size:9px;color:var(--dim);margin-left:4px;font-family:var(--mono)">${t.count} inc</div>
+    </div>`).join("");
+
+  // ── Case Fatality Rate bar ────────────────────────────────────────
+  const maxCFR = Math.max(...cfr.map(c=>c.case_fatality_rate||0),1);
+  document.getElementById("chart-cfr").innerHTML = cfr.map(c=>`
+    <div class="bar-row">
+      <div class="bar-lbl">${(c.incident_type||"other").replace("_"," ")}</div>
+      <div class="bar-track"><div class="bar-fill" style="width:${(c.case_fatality_rate||0)/maxCFR*100}%;background:${c.case_fatality_rate>50?'var(--red)':c.case_fatality_rate>25?'var(--orange)':'var(--yellow)'}"></div></div>
+      <div class="bar-val">${c.case_fatality_rate}%</div>
+      <div style="font-size:9px;color:var(--dim);margin-left:4px;font-family:var(--mono)">${c.deaths}d/${c.total_affected}tot</div>
+    </div>`).join("");
+
+  // ── District hotspots bar ─────────────────────────────────────────
+  const top10 = hotspots.slice(0,10);
+  const maxH  = Math.max(...top10.map(h=>h.total_deaths||0),1);
+  document.getElementById("chart-hotspots").innerHTML = top10.map(h=>`
+    <div class="bar-row">
+      <div class="bar-lbl">${h.district}</div>
+      <div class="bar-track"><div class="bar-fill" style="width:${(h.total_deaths||0)/maxH*100}%;background:var(--red)"></div></div>
+      <div class="bar-val">${h.total_deaths||0}</div>
+    </div>`).join("");
+
+  // ── Province bar ──────────────────────────────────────────────────
+  const byProv = {};
+  hotspots.forEach(h=>{ byProv[h.province]=(byProv[h.province]||0)+(h.total_deaths||0); });
+  const provArr = Object.entries(byProv).filter(([p])=>p&&p!=="Unknown").sort((a,b)=>b[1]-a[1]);
+  const maxP = Math.max(...provArr.map(p=>p[1]),1);
+  const PROV_COL = {"Kigali City":"#388bfd","Northern":"#3fb950","Southern":"#d29922","Eastern":"#f85149","Western":"#bc8cff"};
+  document.getElementById("chart-province").innerHTML = provArr.map(([p,d])=>`
+    <div class="bar-row">
+      <div class="bar-lbl">${p}</div>
+      <div class="bar-track"><div class="bar-fill" style="width:${d/maxP*100}%;background:${PROV_COL[p]||'var(--accent)'}"></div></div>
+      <div class="bar-val">${d}</div>
+    </div>`).join("");
+
+  // ── Hotspot table ─────────────────────────────────────────────────
+  document.getElementById("hotspot-tbody").innerHTML = hotspots.slice(0,20).map(h=>{
+    const risk = h.risk_score>30?"risk-high":h.risk_score>10?"risk-med":"risk-low";
+    return `<tr>
+      <td style="font-weight:600;color:var(--bright)">${h.district}</td>
+      <td style="color:var(--dim)">${h.province}</td>
+      <td style="font-family:var(--mono)">${h.incident_count}</td>
+      <td style="font-family:var(--mono);color:var(--red);font-weight:600">${h.total_deaths||0}</td>
+      <td style="font-family:var(--mono);color:var(--yellow)">${h.total_injured||0}</td>
+      <td style="color:var(--dim);font-size:10px">${(h.types||"").split(",")[0]?.replace("_"," ")||"—"}</td>
+      <td><span class="risk-badge ${risk}">${h.risk_score}</span></td>
+    </tr>`;}).join("");
+
+  // ── Deadliest incidents table ─────────────────────────────────────
+  document.getElementById("deadliest-tbody").innerHTML = deadliest.map((d,i)=>`
+    <tr onclick="showDetail(${d.id});switchPTab('feed')" style="cursor:pointer">
+      <td style="font-family:var(--mono);color:var(--dim)">${i+1}</td>
+      <td style="font-family:var(--mono);white-space:nowrap">${(d.event_date||"").slice(0,10)}</td>
+      <td style="max-width:220px;white-space:normal;line-height:1.3;font-size:11px">${d.title.slice(0,80)}${d.title.length>80?"…":""}</td>
+      <td style="color:var(--dim);font-size:10px">${(d.incident_type||"").replace("_"," ")}</td>
+      <td>${d.district||"—"}</td>
+      <td style="font-family:var(--mono);color:var(--red);font-weight:700;font-size:13px">${d.deaths}</td>
+      <td style="font-family:var(--mono);color:var(--yellow)">${d.injured||0}</td>
+      <td style="color:var(--dim);font-size:10px">${(d.source_name||"").slice(0,18)}</td>
+    </tr>`).join("");
+}
+
+/* ── TRENDS VIEW ──────────────────────────────────────────────────── */
+async function loadTrends(){
+  const [monthly, yearly, seasonal, typeYear, heatmap, dow, yoy, provTrend] = await Promise.all([
+    fetch("/api/analytics/monthly?years=10").then(r=>r.json()),
+    fetch("/api/analytics/yearly").then(r=>r.json()),
+    fetch("/api/analytics/seasonal").then(r=>r.json()),
+    fetch("/api/analytics/type-trend").then(r=>r.json()),
+    fetch("/api/analytics/heatmap").then(r=>r.json()),
+    fetch("/api/analytics/dow").then(r=>r.json()),
+    fetch("/api/analytics/yoy").then(r=>r.json()),
+    fetch("/api/analytics/province-trend").then(r=>r.json()),
+  ]);
+
+  // ── Monthly heatmap ───────────────────────────────────────────────
+  renderHeatmap(heatmap);
+
+  // ── Seasonal pattern ──────────────────────────────────────────────
+  destroyChart("seasonal");
+  const MONTHS = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
+  // fill gaps for all 12 months
+  const seasonMap = {}; seasonal.forEach(s=>seasonMap[s.month_num]=s);
+  const seasonData = MONTHS.map((_,i)=>({
+    avg_incidents: seasonMap[i+1]?.avg_incidents||0,
+    avg_deaths:    seasonMap[i+1]?.avg_deaths||0,
+  }));
+  charts["seasonal"] = new Chart(document.getElementById("chart-seasonal"),{
+    type:"bar",
+    data:{labels:MONTHS,datasets:[
+      {label:"Avg Incidents/yr",data:seasonData.map(s=>s.avg_incidents),backgroundColor:MONTHS.map((_,i)=>[2,3,4,9,10].includes(i)?"rgba(56,139,253,.7)":"rgba(56,139,253,.3)"),borderColor:"#388bfd",borderWidth:1},
+      {label:"Avg Deaths/yr",data:seasonData.map(s=>s.avg_deaths),type:"line",borderColor:"#f85149",borderWidth:2,pointRadius:3,fill:false,tension:.3},
+    ]},
+    options:{...CFG,plugins:{...CFG.plugins,
+      annotation:{annotations:{
+        box1:{type:"box",xMin:2,xMax:4,backgroundColor:"rgba(56,139,253,.05)",borderColor:"rgba(56,139,253,.2)",borderWidth:1,label:{content:"Rainy",display:true,color:"#484f58",font:{size:8}}},
+        box2:{type:"box",xMin:9,xMax:10,backgroundColor:"rgba(56,139,253,.05)",borderColor:"rgba(56,139,253,.2)",borderWidth:1},
+      }}
+    }}
+  });
+
+  // ── Day of week ───────────────────────────────────────────────────
+  destroyChart("dow");
+  charts["dow"] = new Chart(document.getElementById("chart-dow"),{
+    type:"bar",
+    data:{
+      labels:dow.map(d=>d.day.slice(0,3)),
+      datasets:[
+        {label:"Incidents",data:dow.map(d=>d.incidents),backgroundColor:dow.map(d=>d.incidents===Math.max(...dow.map(x=>x.incidents))?"rgba(248,81,73,.7)":"rgba(248,81,73,.3)"),borderColor:"#f85149",borderWidth:1},
+        {label:"Deaths",data:dow.map(d=>d.deaths||0),type:"line",borderColor:"#d29922",borderWidth:2,pointRadius:4,fill:false},
+      ]
+    },options:CFG
+  });
+
+  // ── Monthly trend ─────────────────────────────────────────────────
+  destroyChart("monthly");
+  charts["monthly"] = new Chart(document.getElementById("chart-monthly"),{
+    type:"bar",
+    data:{labels:monthly.map(m=>m.month),datasets:[
+      {label:"Incidents",data:monthly.map(m=>m.incidents),backgroundColor:"rgba(56,139,253,.35)",borderColor:"#388bfd",borderWidth:1},
+      {label:"Deaths",data:monthly.map(m=>m.deaths||0),backgroundColor:"rgba(248,81,73,.35)",borderColor:"#f85149",borderWidth:1},
+      {label:"Deaths 3m avg",data:monthly.map(m=>m.deaths_3m_avg),type:"line",borderColor:"#d29922",borderWidth:2,pointRadius:0,fill:false,tension:.4},
+    ]},options:CFG
+  });
+
+  // ── Yearly bar ────────────────────────────────────────────────────
+  destroyChart("yearly");
+  charts["yearly"] = new Chart(document.getElementById("chart-yearly"),{
+    type:"bar",
+    data:{labels:yearly.map(y=>y.year),datasets:[
+      {label:"Incidents",data:yearly.map(y=>y.incidents),backgroundColor:"rgba(56,139,253,.5)",borderColor:"#388bfd",borderWidth:1},
+      {label:"Deaths",data:yearly.map(y=>y.deaths||0),backgroundColor:"rgba(248,81,73,.5)",borderColor:"#f85149",borderWidth:1},
+    ]},options:CFG
+  });
+
+  // ── Year-over-year % change ───────────────────────────────────────
+  destroyChart("yoy");
+  const yoyFull = yoy.filter(y=>y.dth_pct_change!==null);
+  charts["yoy"] = new Chart(document.getElementById("chart-yoy"),{
+    type:"bar",
+    data:{labels:yoyFull.map(y=>y.year),datasets:[
+      {label:"Deaths % change vs prev year",
+       data:yoyFull.map(y=>y.dth_pct_change),
+       backgroundColor:yoyFull.map(y=>(y.dth_pct_change||0)>0?"rgba(248,81,73,.6)":"rgba(63,185,80,.6)"),
+       borderColor:yoyFull.map(y=>(y.dth_pct_change||0)>0?"#f85149":"#3fb950"),
+       borderWidth:1},
+    ]},
+    options:{...CFG,plugins:{...CFG.plugins,legend:{display:false}},
+      scales:{...CFG.scales,y:{...CFG.scales.y,ticks:{...CFG.scales.y.ticks,callback:v=>`${v}%`}}}}
+  });
+
+  // ── Type by year stacked ──────────────────────────────────────────
+  const years2   = [...new Set(typeYear.map(r=>r.year))].sort();
+  const itypes   = [...new Set(typeYear.map(r=>r.incident_type))];
+  const typeMap  = {};
+  typeYear.forEach(r=>{ if(!typeMap[r.incident_type]) typeMap[r.incident_type]={}; typeMap[r.incident_type][r.year]=r.deaths||0; });
+  destroyChart("typeyear");
+  charts["typeyear"] = new Chart(document.getElementById("chart-typeyear"),{
+    type:"bar",
+    data:{labels:years2,datasets:itypes.slice(0,8).map(t=>({
+      label:t.replace("_"," "),
+      data:years2.map(y=>typeMap[t]?.[y]||0),
+      backgroundColor:(TYPE_COL[t]||"#484f58")+"aa",
+      borderColor:TYPE_COL[t]||"#484f58",
+      borderWidth:1,
+    }))},
+    options:{...CFG,scales:{...CFG.scales,x:{...CFG.scales.x,stacked:true},y:{...CFG.scales.y,stacked:true}}}
+  });
+
+  // ── Province trend ────────────────────────────────────────────────
+  const provYears = [...new Set(provTrend.map(r=>r.year))].sort();
+  const provinces = [...new Set(provTrend.map(r=>r.province))].filter(p=>p&&p!=="Unknown");
+  const provMap   = {};
+  provTrend.forEach(r=>{ if(!provMap[r.province]) provMap[r.province]={}; provMap[r.province][r.year]=r.deaths||0; });
+  const PCOLS = {"Kigali City":"#388bfd","Northern":"#3fb950","Southern":"#d29922","Eastern":"#f85149","Western":"#bc8cff"};
+  destroyChart("province-trend");
+  charts["province-trend"] = new Chart(document.getElementById("chart-province-trend"),{
+    type:"line",
+    data:{labels:provYears,datasets:provinces.map(p=>({
+      label:p, data:provYears.map(y=>provMap[p]?.[y]||0),
+      borderColor:PCOLS[p]||"#484f58", borderWidth:2,
+      backgroundColor:(PCOLS[p]||"#484f58")+"22",
+      fill:false, tension:.3, pointRadius:3,
+    }))},
+    options:CFG
+  });
+}
+
+/* ── HEATMAP RENDERER ─────────────────────────────────────────────── */
+function renderHeatmap(data){
+  const MONTHS = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
+  const years  = [...new Set(data.map(r=>r.year))].sort();
+  if(!years.length){ document.getElementById("heatmap-container").innerHTML='<div style="color:var(--dim);font-size:11px;padding:12px">Not enough data for heatmap</div>'; return; }
+
+  // build lookup
+  const lookup = {};
+  data.forEach(r=>{ lookup[`${r.year}-${r.month}`]={inc:r.incidents||0, dth:r.deaths||0}; });
+  const maxInc = Math.max(...data.map(r=>r.incidents||0),1);
+
+  function cellColor(inc){
+    if(!inc) return "#161b22";
+    const t = inc/maxInc;
+    if(t<0.2) return "#1a3a5c";
+    if(t<0.4) return "#1e5799";
+    if(t<0.6) return "#d29922";
+    if(t<0.8) return "#db6d28";
+    return "#f85149";
+  }
+
+  const xlabels = MONTHS.map(m=>`<div class="hm-xlabel">${m}</div>`).join("");
+  const rows = years.map(y=>{
+    const cells = MONTHS.map((_,mi)=>{
+      const d = lookup[`${y}-${mi+1}`]||{inc:0,dth:0};
+      return `<div class="hm-cell" style="background:${cellColor(d.inc)}" title="${y} ${MONTHS[mi]}: ${d.inc} incidents, ${d.dth} deaths"></div>`;
+    }).join("");
+    return `<div class="hm-ylabel">${y}</div><div class="hm-row">${cells}</div>`;
+  });
+
+  document.getElementById("heatmap-container").innerHTML = `
+    <div style="display:grid;grid-template-columns:36px 1fr;gap:0;min-width:500px">
+      <div></div><div style="display:flex;gap:2px;margin-bottom:3px">${xlabels}</div>
+      ${rows.join("")}
+    </div>
+    <div class="hm-legend">
+      Intensity: 
+      <div class="hm-legend-cells">
+        <div class="hm-legend-cell" style="background:#161b22"></div>
+        <div class="hm-legend-cell" style="background:#1a3a5c"></div>
+        <div class="hm-legend-cell" style="background:#1e5799"></div>
+        <div class="hm-legend-cell" style="background:#d29922"></div>
+        <div class="hm-legend-cell" style="background:#db6d28"></div>
+        <div class="hm-legend-cell" style="background:#f85149"></div>
+      </div>
+      Low → High
+    </div>`;
+}
+
+/* ── PREDICTIONS ──────────────────────────────────────────────────── */
+async function loadPredictions(){
+  const [pred, risk] = await Promise.all([
+    fetch("/api/predictions/next-month").then(r=>r.json()),
+    fetch("/api/predictions/risk-districts").then(r=>r.json()),
+  ]);
+  const confClass = {"high":"conf-high","medium":"conf-med","low":"conf-low"}[pred.confidence]||"conf-low";
+  document.getElementById("pred-cards").innerHTML=`
+    <div class="pred-card">
+      <div class="pred-val" style="color:var(--accent)">${pred.predicted_incidents||"—"}</div>
+      <div class="pred-lbl">Predicted Incidents</div>
+      <span class="pred-conf ${confClass}">${pred.confidence} confidence</span>
+    </div>
+    <div class="pred-card">
+      <div class="pred-val" style="color:var(--red)">${pred.predicted_deaths||"—"}</div>
+      <div class="pred-lbl">Predicted Deaths</div>
+      <div style="font-size:10px;color:var(--dim);margin-top:4px">${pred.next_month||""}</div>
+    </div>
+    <div class="pred-card">
+      <div class="pred-val" style="color:var(--dim)">${pred.based_on_months||0}</div>
+      <div class="pred-lbl">Months of Data Used</div>
+    </div>`;
+  document.getElementById("risk-tbody").innerHTML = risk.map(d=>`
+    <tr>
+      <td style="font-weight:600;color:var(--bright)">${d.district}</td>
+      <td style="color:var(--dim)">${d.province}</td>
+      <td style="font-family:var(--mono)">${d.historical_count}</td>
+      <td style="font-family:var(--mono);color:var(--red)">${d.historical_deaths||0}</td>
+      <td style="font-family:var(--mono);color:var(--yellow)">${d.recent_90d}</td>
+      <td style="font-family:var(--mono);color:var(--orange)">${d.projected_next_month}</td>
+      <td style="font-size:10px;color:var(--dim)">${(d.dominant_types||[]).join(", ").replace(/_/g," ")}</td>
+    </tr>`).join("");
+}
+
+/* ── DATA EXPLORER ────────────────────────────────────────────────── */
+let deAllData = [], deFiltered = [], deSortCol = "event_date", deSortDir = -1, dePage_ = 1;
+const DE_PAGE_SIZE = 50;
+
+async function loadDataExplorer(){
+  if(deAllData.length === 0){
+    const r = await fetch("/api/data/all");
+    deAllData = await r.json();
+    // populate year dropdown
+    const years = [...new Set(deAllData.map(d=>(d.event_date||d.detected_at||"").slice(0,4)).filter(y=>y>="2015"))].sort().reverse();
+    const sel = document.getElementById("de-year");
+    years.forEach(y=>{ const o=document.createElement("option"); o.value=y; o.textContent=y; sel.appendChild(o); });
+  }
+  deSearch();
+}
+
+function deSearch(){
+  const q    = document.getElementById("de-search").value.toLowerCase();
+  const type = document.getElementById("de-type").value;
+  const prov = document.getElementById("de-province").value;
+  const year = document.getElementById("de-year").value;
+  const mind = parseInt(document.getElementById("de-mindeaths").value)||0;
+
+  deFiltered = deAllData.filter(d=>{
+    const text = `${d.title} ${d.district} ${d.province} ${d.incident_type} ${d.source_name}`.toLowerCase();
+    const dy   = (d.event_date||d.detected_at||"").slice(0,4);
+    return (!q || text.includes(q))
+        && (!type || d.incident_type===type)
+        && (!prov || d.province===prov)
+        && (!year || dy===year)
+        && (d.deaths||0) >= mind;
+  });
+  dePage_ = 1;
+  deSort_(deSortCol, false);
+}
+
+function deSort(col){
+  if(deSortCol===col) deSortDir *= -1; else { deSortCol=col; deSortDir=-1; }
+  deSort_(col, true);
+}
+function deSort_(col, updateHeader){
+  deFiltered.sort((a,b)=>{
+    let av=a[col]??0, bv=b[col]??0;
+    if(typeof av==="string") return av.localeCompare(bv)*deSortDir;
+    return (av-bv)*deSortDir;
+  });
+  if(updateHeader){
+    document.querySelectorAll(".de-table th").forEach(th=>{th.classList.remove("sort-asc","sort-desc");});
+    const ths=[...document.querySelectorAll(".de-table th")];
+    const cols=["id","event_date","title","incident_type","district","province","deaths","injured","severity","source_name","link"];
+    const idx=cols.indexOf(col);
+    if(idx>=0) ths[idx].classList.add(deSortDir===1?"sort-asc":"sort-desc");
+  }
+  deRender();
+}
+
+function deRender(){
+  const total = deFiltered.length;
+  const pages = Math.max(1, Math.ceil(total/DE_PAGE_SIZE));
+  dePage_ = Math.min(dePage_, pages);
+  const start = (dePage_-1)*DE_PAGE_SIZE;
+  const page  = deFiltered.slice(start, start+DE_PAGE_SIZE);
+
+  document.getElementById("de-count").textContent  = `${total} records`;
+  document.getElementById("de-count2").textContent = total;
+  document.getElementById("pg-info").textContent   = `Page ${dePage_} of ${pages}`;
+  document.getElementById("pg-range").textContent  = `${start+1}–${Math.min(start+DE_PAGE_SIZE, total)}`;
+  document.getElementById("pg-prev").disabled = dePage_<=1;
+  document.getElementById("pg-next").disabled = dePage_>=pages;
+
+  const SC = {1:"#3fb950",2:"#d29922",3:"#db6d28",4:"#f85149",5:"#bc8cff"};
+  document.getElementById("de-tbody").innerHTML = page.map(d=>`
+    <tr onclick="showDetail(${d.id});switchPTab('feed')">
+      <td style="color:var(--dim);font-family:var(--mono)">${d.id}</td>
+      <td style="font-family:var(--mono);white-space:nowrap">${(d.event_date||d.detected_at||"").slice(0,10)}</td>
+      <td style="max-width:260px;white-space:normal;line-height:1.3" title="${d.title}">${d.title.slice(0,90)}${d.title.length>90?"…":""}</td>
+      <td style="color:var(--dim)">${(d.incident_type||"").replace("_"," ")}</td>
+      <td>${d.district||"—"}</td>
+      <td style="color:var(--dim)">${d.province||"—"}</td>
+      <td style="font-family:var(--mono);color:${(d.deaths||0)>0?'var(--red)':'var(--dim)'};font-weight:${(d.deaths||0)>0?600:400}">${d.deaths||0}</td>
+      <td style="font-family:var(--mono);color:var(--yellow)">${d.injured||0}</td>
+      <td><span class="de-sev" style="background:${SC[d.severity]||'#484f58'};color:${d.severity<=2?'#000':'#fff'}">${d.severity}</span></td>
+      <td style="color:var(--dim);max-width:120px" title="${d.source_name}">${(d.source_name||"").slice(0,20)}</td>
+      <td>${d.source_url?`<a href="${d.source_url}" target="_blank" style="color:var(--accent);text-decoration:none" onclick="event.stopPropagation()">↗</a>`:"—"}</td>
+    </tr>`).join("");
+}
+
+function dePage(dir){ dePage_+=dir; deRender(); }
+
+/* ── DOWNLOAD CSV ─────────────────────────────────────────────────── */
+function downloadCSV(){
+  const cols = ["id","event_date","title","incident_type","district","province","deaths","injured","missing","severity","source_name","source_url","media_type","detected_at","ai_summary"];
+  const header = cols.join(",");
+  const rows = deFiltered.map(d=>cols.map(c=>{
+    const v = d[c]??""
+    const s = String(v).replace(/"/g,'""');
+    return s.includes(",")||s.includes('"')||s.includes("\n") ? `"${s}"` : s;
+  }).join(","));
+  const csv = [header,...rows].join("\n");
+  const blob = new Blob(["\uFEFF"+csv],{type:"text/csv;charset=utf-8"});
+  const a=document.createElement("a"); a.href=URL.createObjectURL(blob);
+  a.download=`rwanda_mci_${new Date().toISOString().slice(0,10)}.csv`; a.click();
+}
+
+/* ── DOWNLOAD EXCEL (via server) ─────────────────────────────────── */
+function downloadExcel(){
+  // Build query string from current filters
+  const q    = document.getElementById("de-search").value;
+  const type = document.getElementById("de-type").value;
+  const prov = document.getElementById("de-province").value;
+  const year = document.getElementById("de-year").value;
+  const mind = document.getElementById("de-mindeaths").value;
+  const params = new URLSearchParams({q,type,province:prov,year,min_deaths:mind});
+  window.location.href = `/api/export/excel?${params}`;
+}
+
+/* ── controls ─────────────────────────────────────────────────────── */
+async function manualRefresh(){
+  const btn = document.querySelector(".btn-refresh");
+  btn.textContent="⟳ Running…"; btn.disabled=true;
+  await fetch("/api/scraper/refresh",{method:"POST"});
+  setTimeout(()=>{ btn.textContent="↻ Refresh"; btn.disabled=false; fetchMapData(); fetchStats(); fetchScraperStatus(); },3000);
+}
+async function runHistorical(){
+  if(!confirm("This will scrape all historical data (2015–present). It may take several minutes. Continue?")) return;
+  await fetch("/api/scraper/historical",{method:"POST"});
+  alert("Historical scrape started in background. Check the Scraper tab for progress.");
+}
+
+/* ── boot ─────────────────────────────────────────────────────────── */
+initMap();
+fetchMapData();
+fetchStats();
+fetchScraperStatus();
+setInterval(fetchMapData,    60000);
+setInterval(fetchStats,      30000);
+setInterval(fetchScraperStatus, 15000);
+</script>
+</body>
+</html>
