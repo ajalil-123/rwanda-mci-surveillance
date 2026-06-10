@@ -1,6 +1,6 @@
 """
 app.py — Flask backend for Rwanda MCI Surveillance System
-Flat-folder layout, Windows compatible.
+Works locally (Windows/Mac/Linux) and on Render.com
 """
 import os, json, threading, time, logging
 from datetime import datetime
@@ -8,8 +8,23 @@ from flask import Flask, jsonify, send_from_directory, request
 
 # ── paths ─────────────────────────────────────────────────────────────────────
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-LOG_DIR  = os.path.join(BASE_DIR, "logs")
-os.makedirs(LOG_DIR, exist_ok=True)
+
+# On Render, use /tmp for writable storage (persists within a session).
+# For permanent persistence, mount a Render Disk at /data.
+# Locally, use the project folder.
+if os.path.exists("/tmp") and os.environ.get("RENDER"):
+    DATA_DIR = "/data" if os.path.exists("/data") else "/tmp"
+    LOG_DIR  = "/tmp/logs"
+else:
+    DATA_DIR = os.path.join(BASE_DIR, "data")
+    LOG_DIR  = os.path.join(BASE_DIR, "logs")
+
+os.makedirs(DATA_DIR, exist_ok=True)
+os.makedirs(LOG_DIR,  exist_ok=True)
+
+# Inject paths into database module before importing
+os.environ.setdefault("MCI_DATA_DIR", DATA_DIR)
+os.environ.setdefault("MCI_LOG_DIR",  LOG_DIR)
 
 # ── logging ───────────────────────────────────────────────────────────────────
 logging.basicConfig(
@@ -23,7 +38,9 @@ logging.basicConfig(
 logger = logging.getLogger("app")
 
 # ── app ───────────────────────────────────────────────────────────────────────
-app = Flask(__name__, static_folder=BASE_DIR)
+# Use the directory containing this file — works correctly under gunicorn on Render
+APP_DIR = os.path.dirname(os.path.abspath(__file__))
+app = Flask(__name__, static_folder=APP_DIR, template_folder=APP_DIR)
 
 try:
     from flask_cors import CORS; CORS(app)
@@ -81,7 +98,7 @@ def scheduler():
 
 @app.route("/")
 def index():
-    return send_from_directory(BASE_DIR, "index.html")
+    return send_from_directory(APP_DIR, "index.html")
 
 # Dashboard stats
 @app.route("/api/stats")
