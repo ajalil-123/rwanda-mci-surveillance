@@ -1,17 +1,13 @@
 """
 database.py — SQLite schema, init, and helpers.
-
-Deduplication strategy (two layers):
-  1. source_id  — hash(url+title): exact URL dedup (same article, same source)
-  2. semantic_id — hash(date_window+deaths+injured+type+keywords): same EVENT,
-                   different sources. Prevents storing 6 articles about the
-                   same Tour du Rwanda crash from 6 different news outlets.
+Path is configurable via MCI_DATA_DIR env var so it works
+both locally and on Render.com.
 """
 import os, sqlite3, re, hashlib, json
 from datetime import datetime, timedelta
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-DATA_DIR = os.path.join(BASE_DIR, "data")
+DATA_DIR = os.environ.get("MCI_DATA_DIR") or os.path.join(BASE_DIR, "data")
 DB_PATH  = os.path.join(DATA_DIR, "mci_rwanda.db")
 
 os.makedirs(DATA_DIR, exist_ok=True)
@@ -28,6 +24,7 @@ CREATE TABLE IF NOT EXISTS incidents (
     full_text       TEXT,
     source_name     TEXT,
     source_url      TEXT,
+    source_tier     INTEGER DEFAULT 3,
     media_type      TEXT,
     location        TEXT,
     district        TEXT,
@@ -177,12 +174,16 @@ def make_semantic_id(data: dict) -> str:
 def init_db():
     conn = get_db()
     conn.executescript(SCHEMA)
-    # Add semantic_id column to existing databases that don't have it yet
-    try:
-        conn.execute("ALTER TABLE incidents ADD COLUMN semantic_id TEXT")
-        conn.commit()
-    except:
-        pass  # column already exists
+    # Add columns to existing databases that don't have them yet
+    for col_def in [
+        "ALTER TABLE incidents ADD COLUMN semantic_id TEXT",
+        "ALTER TABLE incidents ADD COLUMN source_tier INTEGER DEFAULT 3",
+    ]:
+        try:
+            conn.execute(col_def)
+            conn.commit()
+        except:
+            pass  # column already exists
     conn.close()
 
 
@@ -227,6 +228,7 @@ def insert_incident(data: dict) -> bool:
       1. source_id  — exact URL+title match
       2. semantic_id — same event from a different outlet
                        (only active when deaths>0 or injured>0)
+    Source tier is auto-classified from source_name.
     """
     sid = data.get("source_id") or source_id(
         data.get("source_url",""), data.get("title","")
@@ -244,18 +246,33 @@ def insert_incident(data: dict) -> bool:
     if sem_id and semantic_duplicate_exists(sem_id):
         return False
 
+    # Classify source into tier 1, 2, or 3.
+    # For aggregators (Google News, AllAfrica), extract the real publisher
+    # from the title and classify that — and overwrite source_name with the
+    # actual publisher so users see the real source.
+    try:
+        from source_registry import classify_from_title_and_source
+        tier, effective_source = classify_from_title_and_source(
+            data.get("title",""),
+            data.get("source_name", "")
+        )
+        if effective_source and effective_source != data.get("source_name",""):
+            data = {**data, "source_name": effective_source}
+    except Exception:
+        tier = 3
+
     conn = get_db()
     conn.execute("""
         INSERT OR IGNORE INTO incidents
             (source_id, semantic_id, title, description, full_text,
-             source_name, source_url, media_type,
+             source_name, source_url, source_tier, media_type,
              location, district, province, latitude, longitude,
              severity, deaths, injured, missing, incident_type, status,
              detected_at, published_at, event_date,
              ai_summary, ai_confidence, is_historical, verified)
         VALUES
             (:source_id,:semantic_id,:title,:description,:full_text,
-             :source_name,:source_url,:media_type,
+             :source_name,:source_url,:source_tier,:media_type,
              :location,:district,:province,:latitude,:longitude,
              :severity,:deaths,:injured,:missing,:incident_type,:status,
              :detected_at,:published_at,:event_date,
@@ -268,6 +285,7 @@ def insert_incident(data: dict) -> bool:
         "full_text":    (data.get("full_text","")    or "")[:2000],
         "source_name":  data.get("source_name",""),
         "source_url":   data.get("source_url",""),
+        "source_tier":  tier,
         "media_type":   data.get("media_type","news_scrape"),
         "location":     data.get("location","Rwanda"),
         "district":     data.get("district",""),

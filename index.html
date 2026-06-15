@@ -193,6 +193,23 @@ canvas{width:100%!important}
 .pop-title{font-weight:600;color:var(--bright);margin-bottom:4px;font-size:12px}
 .pop-row{display:flex;gap:6px;font-size:10px;color:var(--dim);margin-top:2px}
 
+/* tier badges */
+.tier-badge{font-family:var(--mono);font-size:8px;font-weight:700;padding:1px 4px;border-radius:2px;letter-spacing:.5px;display:inline-block;vertical-align:middle}
+.tier-1{background:#3fb950;color:#000}
+.tier-2{background:#388bfd;color:#fff}
+.tier-3{background:#d29922;color:#000}
+
+/* tier breakdown cards */
+.tier-breakdown{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:12px}
+.tier-card{background:var(--surf2);border:1px solid var(--border);border-radius:4px;padding:12px;border-left:4px solid}
+.tier-card.t1{border-left-color:#3fb950}
+.tier-card.t2{border-left-color:#388bfd}
+.tier-card.t3{border-left-color:#d29922}
+.tier-card-h{font-size:10px;color:var(--dim);text-transform:uppercase;letter-spacing:1px;font-family:var(--mono);margin-bottom:4px}
+.tier-card-v{font-family:var(--mono);font-size:22px;font-weight:600;color:var(--bright);line-height:1}
+.tier-card-s{font-size:10px;color:var(--dim);margin-top:5px;line-height:1.4}
+.tier-card-meta{display:flex;gap:8px;margin-top:6px;font-size:9px;color:var(--dim);font-family:var(--mono)}
+
 /* scrollbar */
 ::-webkit-scrollbar{width:4px;height:4px}::-webkit-scrollbar-track{background:transparent}::-webkit-scrollbar-thumb{background:var(--border2);border-radius:2px}
 
@@ -305,7 +322,7 @@ canvas{width:100%!important}
       <button class="nav-btn active" onclick="switchView('map')"><span class="nav-icon">🗺</span>Incident Map</button>
       <button class="nav-btn" onclick="switchView('analytics')"><span class="nav-icon">📊</span>Analytics</button>
       <button class="nav-btn" onclick="switchView('trends')"><span class="nav-icon">📈</span>Trends</button>
-      <button class="nav-btn" onclick="switchView('predictions')"><span class="nav-icon">🔮</span>Predictions</button>
+      <button class="nav-btn" onclick="switchView('predictions')" style="display:none"><span class="nav-icon">🔮</span>Predictions</button>
       <button class="nav-btn" onclick="switchView('data')"><span class="nav-icon">🗄</span>Data Explorer</button>
     </div>
   </div>
@@ -326,6 +343,16 @@ canvas{width:100%!important}
   <div class="s-section">
     <div class="s-label">Incident Type</div>
     <div class="type-grid" id="type-chips"></div>
+  </div>
+
+  <!-- Source tier filter -->
+  <div class="s-section">
+    <div class="s-label">Source Credibility</div>
+    <div class="sev-list">
+      <label class="sev-row"><input type="checkbox" data-tier="1" checked onchange="applyFilters()"><span class="sev-dot" style="background:#3fb950"></span><span class="sev-lbl">T1 · Official Communication</span><span class="sev-cnt" id="tc1">0</span></label>
+      <label class="sev-row"><input type="checkbox" data-tier="2" checked onchange="applyFilters()"><span class="sev-dot" style="background:#388bfd"></span><span class="sev-lbl">T2 · Official Journalism</span><span class="sev-cnt" id="tc2">0</span></label>
+      <label class="sev-row"><input type="checkbox" data-tier="3" checked onchange="applyFilters()"><span class="sev-dot" style="background:#d29922"></span><span class="sev-lbl">T3 · Other Sources</span><span class="sev-cnt" id="tc3">0</span></label>
+    </div>
   </div>
 </aside>
 
@@ -353,6 +380,14 @@ canvas{width:100%!important}
   <!-- Analytics view -->
   <div class="view" id="analytics-view">
     <div class="view-scroll">
+
+      <!-- Section: Source Tiers -->
+      <div class="a-section-title">🏛 Source Tier Breakdown</div>
+      <div id="tier-breakdown" class="tier-breakdown"></div>
+      <div class="a-card a-full">
+        <div class="a-title">All Sources by Tier</div>
+        <div id="sources-by-tier"></div>
+      </div>
 
       <!-- Section: Key Findings -->
       <div class="a-section-title">📋 Key Findings</div>
@@ -523,6 +558,12 @@ canvas{width:100%!important}
       <select class="de-select" id="de-year" onchange="deSearch()">
         <option value="">All Years</option>
       </select>
+      <select class="de-select" id="de-tier" onchange="deSearch()">
+        <option value="">All Tiers</option>
+        <option value="1">T1 · Official</option>
+        <option value="2">T2 · Journalism</option>
+        <option value="3">T3 · Other</option>
+      </select>
       <select class="de-select" id="de-mindeaths" onchange="deSearch()">
         <option value="0">Any deaths</option>
         <option value="1">≥ 1 death</option>
@@ -547,6 +588,7 @@ canvas{width:100%!important}
             <th onclick="deSort('injured')">Injured</th>
             <th onclick="deSort('severity')">Sev</th>
             <th onclick="deSort('source_name')">Source</th>
+            <th onclick="deSort('source_tier')">Tier</th>
             <th>Link</th>
           </tr>
         </thead>
@@ -744,8 +786,20 @@ function toggleType(t){
 
 /* ── filters ──────────────────────────────────────────────────────── */
 function applyFilters(){
-  const activeSev = new Set([...document.querySelectorAll(".sev-list input:checked")].map(i=>+i.value));
-  filteredIncs = allIncidents.filter(i=>activeSev.has(i.severity)&&(activeTypes.size===0||activeTypes.has(i.incident_type)));
+  const activeSev = new Set([...document.querySelectorAll(".sev-list input[type='checkbox']:not([data-tier])")].filter(i=>i.checked).map(i=>+i.value));
+  const activeTiers = new Set([...document.querySelectorAll("[data-tier]:checked")].map(i=>+i.dataset.tier));
+  filteredIncs = allIncidents.filter(i =>
+    activeSev.has(i.severity) &&
+    (activeTypes.size===0 || activeTypes.has(i.incident_type)) &&
+    activeTiers.has(i.source_tier || 3)
+  );
+  // update tier counts
+  const tierCounts = {1:0,2:0,3:0};
+  allIncidents.forEach(i => tierCounts[i.source_tier||3]++);
+  document.getElementById("tc1").textContent = tierCounts[1];
+  document.getElementById("tc2").textContent = tierCounts[2];
+  document.getElementById("tc3").textContent = tierCounts[3];
+
   renderMapMarkers();
   renderFeed();
   fetchStats();
@@ -767,6 +821,7 @@ function renderFeed(){
         <span class="inc-title">${i.title.slice(0,75)}${i.title.length>75?"…":""}${fresh(i)?'<span class="new-tag">NEW</span>':""}</span>
       </div>
       <div class="inc-meta">
+        <span class="tier-badge tier-${i.source_tier||3}">T${i.source_tier||3}</span>
         <span>📍${i.district||i.location||"Rwanda"}</span>
         <span>${i.incident_type?.replace("_"," ")||""}</span>
         <span style="margin-left:auto">${relTime(i.detected_at)}</span>
@@ -797,6 +852,7 @@ async function showDetail(id){
     <div class="det-row"><span class="det-k">Missing</span><span class="det-v">${inc.missing||0}</span></div>
     <div class="det-row"><span class="det-k">Event date</span><span class="det-v">${inc.event_date||"Unknown"}</span></div>
     <div class="det-row"><span class="det-k">Source</span><span class="det-v">${inc.source_name}</span></div>
+    <div class="det-row"><span class="det-k">Source Tier</span><span class="det-v"><span class="tier-badge tier-${inc.source_tier||3}">T${inc.source_tier||3}</span> ${["","Official Communication","Official Journalism","Other Source"][inc.source_tier||3]}</span></div>
     <div class="det-row"><span class="det-k">Media</span><span class="det-v">${inc.media_type}</span></div>
     <div class="det-row"><span class="det-k">Detected</span><span class="det-v">${inc.detected_at?.slice(0,16)}</span></div>
     <div class="det-row"><span class="det-k">Historical</span><span class="det-v">${inc.is_historical?"Yes":"No"}</span></div>
@@ -865,13 +921,47 @@ function lineChart(elId, labels, datasets, extra={}){
 
 /* ── ANALYTICS VIEW ───────────────────────────────────────────────── */
 async function loadAnalytics(){
-  const [types, hotspots, cfr, deadliest, peaks] = await Promise.all([
+  const [types, hotspots, cfr, deadliest, peaks, tiers, sourcesByTier] = await Promise.all([
     fetch("/api/analytics/types").then(r=>r.json()),
     fetch("/api/analytics/hotspots").then(r=>r.json()),
     fetch("/api/analytics/cfr").then(r=>r.json()),
     fetch("/api/analytics/deadliest?limit=20").then(r=>r.json()),
     fetch("/api/analytics/peak-months").then(r=>r.json()),
+    fetch("/api/analytics/source-tiers").then(r=>r.json()),
+    fetch("/api/analytics/sources-by-tier").then(r=>r.json()),
   ]);
+
+  // ── Source Tier breakdown cards ───────────────────────────────────
+  document.getElementById("tier-breakdown").innerHTML = tiers.map(t=>`
+    <div class="tier-card t${t.tier}">
+      <div class="tier-card-h">${t.code} · ${t.label}</div>
+      <div class="tier-card-v" style="color:${t.color}">${t.incidents}</div>
+      <div class="tier-card-s">${t.description}</div>
+      <div class="tier-card-meta">
+        <span>💀 ${t.deaths||0}</span>
+        <span>🤕 ${t.injured||0}</span>
+        <span>📰 ${t.unique_sources} sources</span>
+      </div>
+      <div style="font-size:9px;color:var(--dim);margin-top:6px;font-style:italic">Credibility: ${t.credibility}</div>
+    </div>`).join("");
+
+  // ── All sources organized by tier ─────────────────────────────────
+  document.getElementById("sources-by-tier").innerHTML = sourcesByTier.tiers.map(t=>`
+    <div style="margin-bottom:14px">
+      <div style="font-family:var(--mono);font-size:10px;color:${t.color};letter-spacing:1px;text-transform:uppercase;margin-bottom:6px">
+        ${t.code} · ${t.label}  <span style="color:var(--dim);text-transform:none;letter-spacing:0;margin-left:6px">(${t.sources.length} sources)</span>
+      </div>
+      ${t.sources.length===0 ?
+        '<div style="color:var(--dim);font-size:11px;padding:8px;font-style:italic">No data from this tier yet</div>' :
+        t.sources.map(s=>`
+          <div class="bar-row">
+            <div class="bar-lbl" style="text-align:left;width:200px;max-width:200px">${s.source_name.slice(0,30)}</div>
+            <div class="bar-track"><div class="bar-fill" style="width:${Math.min(100,s.incidents/Math.max(...t.sources.map(x=>x.incidents))*100)}%;background:${t.color}"></div></div>
+            <div class="bar-val">${s.incidents}</div>
+            <div style="font-size:9px;color:var(--red);margin-left:6px;font-family:var(--mono);width:40px">${s.deaths}💀</div>
+          </div>`).join("")
+      }
+    </div>`).join("");
 
   // ── Key Findings cards ────────────────────────────────────────────
   const f = peaks;
@@ -1172,12 +1262,13 @@ let deAllData = [], deFiltered = [], deSortCol = "event_date", deSortDir = -1, d
 const DE_PAGE_SIZE = 50;
 
 async function loadDataExplorer(){
-  if(deAllData.length === 0){
-    const r = await fetch("/api/data/all");
-    deAllData = await r.json();
-    // populate year dropdown
+  // Always fetch fresh data so tier changes / new records appear immediately
+  const r = await fetch("/api/data/all?_=" + Date.now());
+  deAllData = await r.json();
+  // populate year dropdown (only once)
+  const sel = document.getElementById("de-year");
+  if (sel.options.length <= 1) {
     const years = [...new Set(deAllData.map(d=>(d.event_date||d.detected_at||"").slice(0,4)).filter(y=>y>="2015"))].sort().reverse();
-    const sel = document.getElementById("de-year");
     years.forEach(y=>{ const o=document.createElement("option"); o.value=y; o.textContent=y; sel.appendChild(o); });
   }
   deSearch();
@@ -1188,15 +1279,17 @@ function deSearch(){
   const type = document.getElementById("de-type").value;
   const prov = document.getElementById("de-province").value;
   const year = document.getElementById("de-year").value;
+  const tier = document.getElementById("de-tier").value;
   const mind = parseInt(document.getElementById("de-mindeaths").value)||0;
 
   deFiltered = deAllData.filter(d=>{
     const text = `${d.title} ${d.district} ${d.province} ${d.incident_type} ${d.source_name}`.toLowerCase();
     const dy   = (d.event_date||d.detected_at||"").slice(0,4);
-    return (!q || text.includes(q))
+    return (!q    || text.includes(q))
         && (!type || d.incident_type===type)
         && (!prov || d.province===prov)
         && (!year || dy===year)
+        && (!tier || String(d.source_tier||3)===tier)
         && (d.deaths||0) >= mind;
   });
   dePage_ = 1;
@@ -1250,6 +1343,7 @@ function deRender(){
       <td style="font-family:var(--mono);color:var(--yellow)">${d.injured||0}</td>
       <td><span class="de-sev" style="background:${SC[d.severity]||'#484f58'};color:${d.severity<=2?'#000':'#fff'}">${d.severity}</span></td>
       <td style="color:var(--dim);max-width:120px" title="${d.source_name}">${(d.source_name||"").slice(0,20)}</td>
+      <td><span class="tier-badge tier-${d.source_tier||3}">T${d.source_tier||3}</span></td>
       <td>${d.source_url?`<a href="${d.source_url}" target="_blank" style="color:var(--accent);text-decoration:none" onclick="event.stopPropagation()">↗</a>`:"—"}</td>
     </tr>`).join("");
 }

@@ -278,7 +278,7 @@ def all_mapped_incidents(min_deaths=0) -> list:
     rows = conn.execute("""
         SELECT id, title, district, province, latitude, longitude,
                severity, deaths, injured, incident_type, event_date,
-               detected_at, source_name, ai_summary, status
+               detected_at, source_name, source_tier, ai_summary, status
         FROM incidents
         WHERE latitude IS NOT NULL AND deaths >= ?
         ORDER BY deaths DESC, detected_at DESC
@@ -520,3 +520,77 @@ def peak_months_summary() -> dict:
         findings["data_to"]            = years[-1] if years else ""
 
     return findings
+
+# ── 17. SOURCE TIER BREAKDOWN ────────────────────────────────────────────────
+def by_source_tier() -> list:
+    """
+    Distribution of incidents and deaths across the 3 source tiers.
+    Critical for understanding data quality at a glance.
+    """
+    from source_registry import TIER_INFO
+    conn = get_db()
+    rows = conn.execute("""
+        SELECT
+            COALESCE(source_tier, 3) as tier,
+            COUNT(*) as incidents,
+            SUM(deaths)  as deaths,
+            SUM(injured) as injured,
+            COUNT(DISTINCT source_name) as unique_sources
+        FROM incidents
+        GROUP BY tier
+        ORDER BY tier
+    """).fetchall()
+    conn.close()
+    result = []
+    for t in [1, 2, 3]:
+        row = next((dict(r) for r in rows if r["tier"]==t), None)
+        info = TIER_INFO[t]
+        result.append({
+            "tier":           t,
+            "code":           info["code"],
+            "label":          info["label"],
+            "description":    info["description"],
+            "credibility":    info["credibility"],
+            "color":          info["color"],
+            "incidents":      row["incidents"]      if row else 0,
+            "deaths":         row["deaths"]         if row else 0,
+            "injured":        row["injured"]        if row else 0,
+            "unique_sources": row["unique_sources"] if row else 0,
+        })
+    return result
+
+def sources_by_tier() -> dict:
+    """
+    Return all sources organized by tier with their incident counts.
+    Returns: { tier_num: [ {source_name, incidents, deaths}, ... ] }
+    """
+    from source_registry import TIER_INFO
+    conn = get_db()
+    rows = conn.execute("""
+        SELECT
+            COALESCE(source_tier, 3) as tier,
+            source_name,
+            COUNT(*) as incidents,
+            SUM(deaths) as deaths
+        FROM incidents
+        WHERE source_name != ''
+        GROUP BY tier, source_name
+        ORDER BY tier, deaths DESC
+    """).fetchall()
+    conn.close()
+    grouped = {1: [], 2: [], 3: []}
+    for r in rows:
+        r = dict(r)
+        t = r["tier"]
+        if t in grouped:
+            grouped[t].append({
+                "source_name": r["source_name"],
+                "incidents":   r["incidents"],
+                "deaths":      r["deaths"] or 0,
+            })
+    return {
+        "tiers": [
+            {**TIER_INFO[t], "tier": t, "sources": grouped[t]}
+            for t in [1, 2, 3]
+        ]
+    }

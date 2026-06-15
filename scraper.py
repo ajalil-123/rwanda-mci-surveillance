@@ -99,13 +99,17 @@ def parse_rss(xml_text: str) -> list:
         logger.warning(f"RSS parse error: {e}")
     return items
 
-# ── 1. RSS FEEDS ──────────────────────────────────────────────────────────────
+# ── 1. RSS FEEDS (organised by source tier) ──────────────────────────────────
 RSS_SOURCES = [
+    # ── TIER 1: OFFICIAL COMMUNICATION ────────────────────────────────────
+    {"name": "ReliefWeb Rwanda",      "url": "https://reliefweb.int/country/rwa/rss.xml"},
+    {"name": "WHO Rwanda",            "url": "https://www.afro.who.int/countries/rwanda/news/rss.xml"},
+    # ── TIER 2: OFFICIAL JOURNALISM ───────────────────────────────────────
     {"name": "The New Times Rwanda",  "url": "https://www.newtimes.co.rw/rss.xml"},
     {"name": "KT Press",              "url": "https://www.ktpress.rw/feed/"},
     {"name": "Igihe",                 "url": "https://igihe.com/feed/"},
     {"name": "Rwanda Broadcasting",   "url": "https://www.rba.co.rw/feed/"},
-    {"name": "ReliefWeb Rwanda",      "url": "https://reliefweb.int/country/rwa/rss.xml"},
+    # ── TIER 3: OTHER SOURCES (aggregators / international) ───────────────
     {"name": "AllAfrica Rwanda",      "url": "https://allafrica.com/rwanda/"},
 ]
 
@@ -361,11 +365,22 @@ def scrape_nitter(historical=False) -> int:
                 if not is_rwanda_relevant(text) or not is_mci_relevant(text) or not is_civilian_mci(text):
                     continue
 
+                # Detect official Twitter accounts (Tier 2) vs general (Tier 3)
+                tw_lower = tw_url.lower()
+                official_handles = ["rwandapolice","moh_rwanda","minema_rwanda",
+                                    "rwandagov","paulkagame","rwandahealth",
+                                    "rwandarcs","rdfrwanda"]
+                source_name = "Twitter/X"
+                for handle in official_handles:
+                    if f"/{handle}/" in tw_lower or f"@{handle}" in text.lower():
+                        source_name = f"Twitter/X — @{handle}"
+                        break
+
                 enriched = enrich({
                     "title":        text[:140],
                     "description":  text,
                     "full_text":    text,
-                    "source_name":  "Twitter/X",
+                    "source_name":  source_name,
                     "source_url":   tw_url,
                     "media_type":   "twitter",
                     "published_at": pub,

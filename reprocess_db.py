@@ -21,12 +21,16 @@ from datetime import datetime
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, BASE_DIR)
 
-from database import get_db, DB_PATH
+from database import get_db, DB_PATH, init_db
 from nlp import (
     enrich, is_rwanda_relevant, is_mci_relevant, is_civilian_mci,
     extract_deaths, extract_injured, extract_missing,
     classify_incident_type, calculate_severity, geo_tag,
 )
+
+# Make sure the database schema is up to date BEFORE we start querying it.
+# This adds any new columns (semantic_id, source_tier, etc.) to older databases.
+init_db()
 
 # ── counters ──────────────────────────────────────────────────────────────────
 stats = {
@@ -372,6 +376,59 @@ def deduplicate_existing():
     return total_removed
 
 
+def backfill_source_tiers():
+    """
+    Backfill source_tier column on existing records.
+    Also overwrites source_name with the real publisher when the original
+    source was an aggregator (Google News, AllAfrica).
+    """
+    from source_registry import classify_from_title_and_source, TIER_INFO
+
+    print(f"\n{'='*60}")
+    print(f"  SOURCE TIER CLASSIFICATION")
+    print(f"{'='*60}")
+
+    conn = get_db()
+    rows = conn.execute("""
+        SELECT id, title, source_name, source_tier
+        FROM incidents
+    """).fetchall()
+    counts   = {1:0, 2:0, 3:0}
+    updated  = 0
+    renamed  = 0
+    for row in rows:
+        old_source = row["source_name"] or ""
+        new_tier, new_source = classify_from_title_and_source(
+            row["title"] or "", old_source
+        )
+        counts[new_tier] += 1
+
+        changes = []
+        if row["source_tier"] != new_tier:
+            changes.append(("source_tier", new_tier))
+        if new_source and new_source != old_source:
+            changes.append(("source_name", new_source))
+            renamed += 1
+
+        if changes:
+            set_clauses = ", ".join(f"{c}=?" for c,_ in changes)
+            vals = [v for _,v in changes] + [row["id"]]
+            conn.execute(f"UPDATE incidents SET {set_clauses} WHERE id=?", vals)
+            updated += 1
+
+    conn.commit()
+    conn.close()
+
+    print(f"  Updated tier on {updated} records")
+    print(f"  Renamed source on {renamed} records (extracted real publisher from title)")
+    print(f"  Distribution:")
+    for t in [1, 2, 3]:
+        info = TIER_INFO[t]
+        print(f"    Tier {t} ({info['label'][:35]:<35}): {counts[t]} records")
+    print(f"{'='*60}\n")
+    return updated
+
+
 if __name__ == "__main__":
     if not os.path.exists(DB_PATH):
         print(f"ERROR: Database not found at {DB_PATH}")
@@ -386,3 +443,4 @@ if __name__ == "__main__":
 
     reprocess()
     deduplicate_existing()
+    backfill_source_tiers()

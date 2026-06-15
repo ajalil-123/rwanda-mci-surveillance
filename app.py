@@ -58,6 +58,7 @@ from analytics import (
     monthly_heatmap, day_of_week_pattern, case_fatality_rate,
     deadliest_incidents, year_over_year, province_trend,
     hour_of_day_pattern, peak_months_summary,
+    by_source_tier, sources_by_tier,
 )
 
 # ── background scheduler ──────────────────────────────────────────────────────
@@ -191,6 +192,14 @@ def api_province_trend():
 def api_peak_months():
     return jsonify(peak_months_summary())
 
+@app.route("/api/analytics/source-tiers")
+def api_source_tiers():
+    return jsonify(by_source_tier())
+
+@app.route("/api/analytics/sources-by-tier")
+def api_sources_by_tier():
+    return jsonify(sources_by_tier())
+
 # Predictions
 @app.route("/api/predictions/next-month")
 def api_predict_month():
@@ -247,7 +256,7 @@ def api_data_all():
         SELECT id, event_date, detected_at, title, incident_type,
                district, province, latitude, longitude,
                deaths, injured, missing, severity,
-               source_name, source_url, media_type,
+               source_name, source_url, source_tier, media_type,
                ai_summary, ai_confidence, status, is_historical
         FROM incidents
         ORDER BY COALESCE(event_date, detected_at) DESC
@@ -263,8 +272,8 @@ def api_export_csv():
     rows = _filtered_rows(request.args)
     si   = io.StringIO()
     cols = ["id","event_date","title","incident_type","district","province",
-            "deaths","injured","missing","severity","source_name","source_url",
-            "media_type","detected_at","ai_summary"]
+            "deaths","injured","missing","severity","source_name","source_tier",
+            "source_url","media_type","detected_at","ai_summary"]
     writer = csv.DictWriter(si, fieldnames=cols, extrasaction="ignore")
     writer.writeheader()
     writer.writerows(rows)
@@ -293,10 +302,10 @@ def api_export_excel():
         ws.title = "Rwanda MCI Incidents"
 
         cols = ["id","event_date","title","incident_type","district","province",
-                "deaths","injured","missing","severity","source_name","source_url",
-                "media_type","detected_at","ai_summary"]
+                "deaths","injured","missing","severity","source_name","source_tier",
+                "source_url","media_type","detected_at","ai_summary"]
         headers = ["ID","Date","Title","Type","District","Province",
-                   "Deaths","Injured","Missing","Severity","Source",
+                   "Deaths","Injured","Missing","Severity","Source","Tier",
                    "URL","Media","Detected At","AI Summary"]
 
         # header row styling
@@ -322,7 +331,7 @@ def api_export_excel():
                     cell.fill = PatternFill("solid", fgColor=sev_col)
 
         # column widths
-        widths = [5,12,55,16,14,12,7,7,7,5,22,40,12,18,60]
+        widths = [5,12,55,16,14,12,7,7,7,5,22,5,40,12,18,60]
         for ci, w in enumerate(widths, 1):
             ws.column_dimensions[openpyxl.utils.get_column_letter(ci)].width = w
 
