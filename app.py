@@ -382,10 +382,25 @@ def _filtered_rows(args):
         result.append(d)
     return result
 
-# ── entry point ───────────────────────────────────────────────────────────────
-if __name__ == "__main__":
+# ── module-level initialisation (runs under gunicorn too) ─────────────────────
+# Create database schema and start background scheduler when the module is
+# imported. This ensures gunicorn workers have a working DB before serving
+# any requests. Guarded with a flag so it only runs once even with --preload.
+_INITIALISED = False
+
+def _initialise():
+    global _INITIALISED
+    if _INITIALISED:
+        return
     init_db()
     t = threading.Thread(target=scheduler, daemon=True)
     t.start()
+    _INITIALISED = True
+    logger.info("Database initialised and scheduler started.")
+
+_initialise()
+
+# ── entry point (only used when running `python app.py` directly) ─────────────
+if __name__ == "__main__":
     logger.info("Server starting on http://localhost:5050")
     app.run(host="0.0.0.0", port=5050, debug=False, use_reloader=False)
