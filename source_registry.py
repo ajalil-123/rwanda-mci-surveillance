@@ -53,21 +53,6 @@ TIER_2_SOURCES = {
     "RBA":                    "RBA (state broadcaster)",
     "Igihe":                  "Igihe (national news, Kinyarwanda)",
     "Rwanda Today":           "Rwanda Today",
-    # Reputable international wire services & broadcasters
-    "Reuters":                "Reuters (international wire)",
-    "Associated Press":       "Associated Press (international wire)",
-    "AP":                     "Associated Press (international wire)",
-    "AFP":                    "Agence France-Presse (international wire)",
-    "BBC":                    "BBC News (international)",
-    "BBC News":               "BBC News (international)",
-    "BBC Africa":              "BBC Africa (international)",
-    "France 24":              "France 24 (international)",
-    "DW":                     "Deutsche Welle (international)",
-    "dw.com":                 "Deutsche Welle (international)",
-    "Al Jazeera":             "Al Jazeera (international)",
-    "Africanews":             "Africanews (regional)",
-    "africanews.com":         "Africanews (regional)",
-    "TRT World":              "TRT World (international)",
     # Official social accounts
     "Twitter/X — @RwandaPolice":   "Rwanda National Police (official social)",
     "Twitter/X — @MoH_Rwanda":     "Ministry of Health (official social)",
@@ -83,6 +68,11 @@ TIER_3_SOURCES = {
     "AllAfrica":            "AllAfrica (aggregator)",
     "AllAfrica Rwanda":     "AllAfrica (aggregator)",
     "allAfrica.com":        "AllAfrica (aggregator)",
+    "Africanews":           "Africanews (regional)",
+    "africanews.com":       "Africanews (regional)",
+    "TRT World":            "TRT World (international)",
+    "trtworld":             "TRT World (international)",
+    "trtworld.com":         "TRT World (international)",
     "Twitter/X":            "Twitter/X (unverified social)",
     "Facebook":             "Facebook (unverified social)",
     "Facebook (simulated)": "Facebook (unverified social)",
@@ -119,6 +109,40 @@ TIER_3_SOURCES = {
 }
 
 # ── Tier metadata ─────────────────────────────────────────────────────────────
+# Sources excluded entirely — articles from these outlets are rejected at
+# scrape time and any existing records will be removed by reprocess_db.py.
+BLOCKED_SOURCES = [
+    # BBC
+    "bbc", "bbc news", "bbc africa", "bbc.com", "bbc.co.uk",
+    # Voice of America
+    "voice of america", "voanews", "voa news", "voa.com", "voanews.com",
+    # Other international wire services / broadcasters (blocked per supervisor)
+    "reuters", "reuters.com",
+    "associated press", "ap news", "apnews.com",
+    "afp", "agence france-presse", "afp.com",
+    "france 24", "france24", "france24.com",
+    "dw", "deutsche welle", "dw.com",
+    "al jazeera", "aljazeera", "aljazeera.com",
+]
+
+def is_blocked_source(source_name: str = "", title: str = "", url: str = "") -> bool:
+    """
+    Returns True if the source should be excluded entirely from scraping/storage.
+    Checks source name, article title (for aggregator-extracted publisher),
+    and URL (for direct-scraped sources).
+    """
+    haystacks = [
+        (source_name or "").lower(),
+        (title or "").lower(),
+        (url or "").lower(),
+    ]
+    for blocked in BLOCKED_SOURCES:
+        for h in haystacks:
+            if blocked in h:
+                return True
+    return False
+
+
 TIER_INFO = {
     1: {
         "code":        "T1",

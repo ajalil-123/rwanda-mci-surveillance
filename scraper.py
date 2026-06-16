@@ -26,19 +26,23 @@ logger = logging.getLogger(__name__)
 def should_store(enriched: dict) -> bool:
     """
     Gate before insert_incident().
-    A record is only worth storing if it has confirmed casualties
-    (at least 1 death OR at least 1 injured).
-
-    Rejected examples:
-      - "Recurring landslides destroy farmland" — 0 deaths, 0 injured
-      - "Road accident victims recovering" — 0 deaths, 0 injured
-      - "Lightning risks in low-lying areas" — 0 deaths, 0 injured
-
-    Kept examples:
-      - "Bus crash kills 18 near Bugesera" — deaths=18
-      - "Two killed, six injured in Tour du Rwanda" — deaths=2, injured=6
-      - "Cyclist killed in hit-and-run" — deaths=1
+    Two rules:
+      1. Reject articles from blocked sources (BBC, Voice of America, etc.)
+      2. Require at least 1 death OR 1 injured
     """
+    # Rule 1 — blocked source check
+    try:
+        from source_registry import is_blocked_source
+        if is_blocked_source(
+            source_name=enriched.get("source_name", ""),
+            title=enriched.get("title", ""),
+            url=enriched.get("source_url", ""),
+        ):
+            return False
+    except Exception:
+        pass
+
+    # Rule 2 — must have casualties
     deaths  = int(enriched.get("deaths")  or 0)
     injured = int(enriched.get("injured") or 0)
     return deaths > 0 or injured > 0

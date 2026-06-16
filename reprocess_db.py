@@ -36,6 +36,7 @@ init_db()
 stats = {
     "total":             0,
     "deleted":           0,
+    "deleted_blocked":   0,
     "deleted_foreign":   0,
     "deleted_unknown":   0,
     "deleted_violence":  0,
@@ -83,6 +84,22 @@ def reprocess():
             row.get("description",""),
             row.get("full_text",""),
         ]))
+
+        # ── Step 0: Blocked sources (BBC, VOA, etc.) — delete entirely ────
+        try:
+            from source_registry import is_blocked_source
+            if is_blocked_source(
+                source_name=row.get("source_name",""),
+                title=title,
+                url=row.get("source_url",""),
+            ):
+                conn.execute("DELETE FROM incidents WHERE id=?", (iid,))
+                stats["deleted"] += 1
+                stats["deleted_blocked"] = stats.get("deleted_blocked",0) + 1
+                deleted_titles.append(f"  [{iid}] [blocked source] {title[:65]}")
+                continue
+        except Exception:
+            pass
 
         # ── Step 1: Rwanda relevance check — delete if false positive ─────
         if not is_rwanda_relevant(text):
@@ -231,6 +248,7 @@ def reprocess():
     # ── Print report ──────────────────────────────────────────────────────
     print(f"{'─'*60}")
     print(f"  DELETED: {stats['deleted']} total")
+    print(f"    Blocked sources (BBC, VOA, etc): {stats['deleted_blocked']}")
     print(f"    Foreign conflict / not Rwanda  : {stats['deleted_foreign']}")
     print(f"    War / violence / off-topic     : {stats['deleted_violence']}")
     print(f"    Zero casualties                : {stats['deleted_zero_cas']}")
@@ -265,6 +283,7 @@ def reprocess():
     print(f"{'='*60}")
     print(f"  Total records processed   : {stats['total']}")
     print(f"  Deleted total             : {stats['deleted']}")
+    print(f"    → Blocked sources       : {stats['deleted_blocked']}")
     print(f"    → Foreign / off-topic   : {stats['deleted_foreign']}")
     print(f"    → War / violence        : {stats['deleted_violence']}")
     print(f"    → Zero casualties       : {stats['deleted_zero_cas']}")
