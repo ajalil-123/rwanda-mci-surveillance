@@ -1,0 +1,38 @@
+# Secrets — NEVER commit
+.env
+*.env
+
+# Database — environment-specific, recreated on deploy
+data/
+*.db
+*.sqlite3
+
+# Python
+venv/
+__pycache__/
+*.py[cod]
+*.pyo
+.Python
+*.egg-info/
+dist/
+build/
+.eggs/
+
+# Logs
+logs/
+*.log
+
+# Editor / OS
+.DS_Store
+Thumbs.db
+*.swp
+*.swo
+
+# Claude session outputs
+Claude outputs/
+
+# Backup scraper
+scraper-1.py
+
+# Windows temp
+~BROMIUM/

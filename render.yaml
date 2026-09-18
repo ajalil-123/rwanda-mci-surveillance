@@ -1,0 +1,15 @@
+services:
+  - type: web
+    name: rwanda-mci-surveillance
+    env: python
+    buildCommand: pip install -r requirements.txt
+    startCommand: gunicorn app:app --bind 0.0.0.0:$PORT --workers 1 --timeout 120
+    envVars:
+      - key: ANTHROPIC_API_KEY
+        sync: false          # set manually in Render dashboard — never in this file
+      - key: MCI_DATA_DIR
+        value: /opt/render/project/src/data
+    disk:
+      name: mci-data
+      mountPath: /opt/render/project/src/data
+      sizeGB: 1

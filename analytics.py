@@ -15,26 +15,26 @@ def rows_to_list(rows):
 # ── 1. SUMMARY STATS ─────────────────────────────────────────────────────────
 def get_summary_stats() -> dict:
     conn = get_db()
-    total     = conn.execute("SELECT COUNT(*) FROM incidents").fetchone()[0]
-    confirmed = conn.execute("SELECT COUNT(*) FROM incidents WHERE deaths > 0").fetchone()[0]
-    deaths    = conn.execute("SELECT SUM(deaths) FROM incidents").fetchone()[0] or 0
-    injured   = conn.execute("SELECT SUM(injured) FROM incidents").fetchone()[0] or 0
-    missing   = conn.execute("SELECT SUM(missing) FROM incidents").fetchone()[0] or 0
-    critical  = conn.execute("SELECT COUNT(*) FROM incidents WHERE severity >= 4").fetchone()[0]
+    total     = conn.execute("SELECT COUNT(*) FROM verified_incidents").fetchone()[0]
+    confirmed = conn.execute("SELECT COUNT(*) FROM verified_incidents WHERE deaths > 0").fetchone()[0]
+    deaths    = conn.execute("SELECT SUM(deaths) FROM verified_incidents").fetchone()[0] or 0
+    injured   = conn.execute("SELECT SUM(injured) FROM verified_incidents").fetchone()[0] or 0
+    missing   = conn.execute("SELECT SUM(missing) FROM verified_incidents").fetchone()[0] or 0
+    critical  = conn.execute("SELECT COUNT(*) FROM verified_incidents WHERE severity >= 4").fetchone()[0]
     last_24h  = conn.execute(
-        "SELECT COUNT(*) FROM incidents WHERE detected_at >= ?",
+        "SELECT COUNT(*) FROM verified_incidents WHERE detected_at >= ?",
         ((datetime.utcnow()-timedelta(hours=24)).isoformat(),)
     ).fetchone()[0]
     last_7d   = conn.execute(
-        "SELECT COUNT(*) FROM incidents WHERE detected_at >= ?",
+        "SELECT COUNT(*) FROM verified_incidents WHERE detected_at >= ?",
         ((datetime.utcnow()-timedelta(days=7)).isoformat(),)
     ).fetchone()[0]
     last_30d  = conn.execute(
-        "SELECT COUNT(*) FROM incidents WHERE detected_at >= ?",
+        "SELECT COUNT(*) FROM verified_incidents WHERE detected_at >= ?",
         ((datetime.utcnow()-timedelta(days=30)).isoformat(),)
     ).fetchone()[0]
     sources   = rows_to_list(conn.execute(
-        "SELECT media_type, COUNT(*) as cnt FROM incidents GROUP BY media_type"
+        "SELECT media_type, COUNT(*) as cnt FROM verified_incidents GROUP BY media_type"
     ).fetchall())
     conn.close()
     return {
@@ -59,7 +59,7 @@ def by_incident_type() -> list:
                SUM(deaths) as total_deaths,
                SUM(injured) as total_injured,
                AVG(severity) as avg_severity
-        FROM incidents
+        FROM verified_incidents
         GROUP BY incident_type
         ORDER BY total_deaths DESC
     """).fetchall()
@@ -78,7 +78,7 @@ def district_hotspots() -> list:
                MAX(severity) as max_severity,
                AVG(severity) as avg_severity,
                GROUP_CONCAT(DISTINCT incident_type) as types
-        FROM incidents
+        FROM verified_incidents
         WHERE district != '' AND district != 'Unknown'
         GROUP BY district
         ORDER BY total_deaths DESC
@@ -105,7 +105,7 @@ def monthly_trend(years_back=5) -> list:
                SUM(deaths) as deaths,
                SUM(injured) as injured,
                AVG(severity) as avg_severity
-        FROM incidents
+        FROM verified_incidents
         WHERE detected_at >= ?
           AND substr(COALESCE(event_date, detected_at), 1, 7) != ''
         GROUP BY month
@@ -129,7 +129,7 @@ def yearly_trend() -> list:
                SUM(deaths) as deaths,
                SUM(injured) as injured,
                AVG(severity) as avg_severity
-        FROM incidents
+        FROM verified_incidents
         WHERE year != '' AND year >= '2015'
         GROUP BY year
         ORDER BY year
@@ -146,7 +146,7 @@ def seasonal_pattern() -> list:
                COUNT(*) as total_incidents,
                SUM(deaths) as total_deaths,
                COUNT(DISTINCT substr(COALESCE(event_date, detected_at), 1, 4)) as years_seen
-        FROM incidents
+        FROM verified_incidents
         WHERE month_num != '' AND month_num != '00'
         GROUP BY month_num
         ORDER BY month_num
@@ -176,7 +176,7 @@ def type_trend_by_year() -> list:
                incident_type,
                COUNT(*) as count,
                SUM(deaths) as deaths
-        FROM incidents
+        FROM verified_incidents
         WHERE year >= '2015' AND year != ''
         GROUP BY year, incident_type
         ORDER BY year, deaths DESC
@@ -239,7 +239,7 @@ def high_risk_districts() -> list:
         # recent trend (last 90 days)
         conn = get_db()
         recent = conn.execute("""
-            SELECT COUNT(*) FROM incidents
+            SELECT COUNT(*) FROM verified_incidents
             WHERE district=? AND detected_at >= ?
         """, (h["district"], (datetime.utcnow()-timedelta(days=90)).isoformat())).fetchone()[0]
         conn.close()
@@ -264,7 +264,7 @@ def recent_incidents(hours=72, min_severity=1, limit=200) -> list:
     since = (datetime.utcnow() - timedelta(hours=hours)).isoformat()
     conn  = get_db()
     rows  = conn.execute("""
-        SELECT * FROM incidents
+        SELECT * FROM verified_incidents
         WHERE detected_at >= ? AND severity >= ?
         ORDER BY detected_at DESC
         LIMIT ?
@@ -279,7 +279,7 @@ def all_mapped_incidents(min_deaths=0) -> list:
         SELECT id, title, district, province, latitude, longitude,
                severity, deaths, injured, incident_type, event_date,
                detected_at, source_name, source_tier, ai_summary, status
-        FROM incidents
+        FROM verified_incidents
         WHERE latitude IS NOT NULL AND deaths >= ?
         ORDER BY deaths DESC, detected_at DESC
     """, (min_deaths,)).fetchall()
@@ -315,7 +315,7 @@ def monthly_heatmap() -> list:
             COUNT(*) as incidents,
             SUM(deaths) as deaths,
             SUM(injured) as injured
-        FROM incidents
+        FROM verified_incidents
         WHERE year >= '2015' AND year != ''
           AND month BETWEEN 1 AND 12
         GROUP BY year, month
@@ -337,7 +337,7 @@ def day_of_week_pattern() -> list:
             COUNT(*) as incidents,
             SUM(deaths) as deaths,
             SUM(injured) as injured
-        FROM incidents
+        FROM verified_incidents
         WHERE event_date != '' OR detected_at != ''
         GROUP BY dow
         ORDER BY dow
@@ -370,7 +370,7 @@ def case_fatality_rate() -> list:
                SUM(deaths) as deaths,
                SUM(injured) as injured,
                SUM(deaths + injured) as total_affected
-        FROM incidents
+        FROM verified_incidents
         WHERE deaths > 0 OR injured > 0
         GROUP BY incident_type
         ORDER BY deaths DESC
@@ -391,7 +391,7 @@ def deadliest_incidents(limit=20) -> list:
     rows = conn.execute("""
         SELECT id, title, incident_type, district, province,
                deaths, injured, severity, event_date, source_name, source_url
-        FROM incidents
+        FROM verified_incidents
         WHERE deaths > 0
         ORDER BY deaths DESC
         LIMIT ?
@@ -435,7 +435,7 @@ def province_trend() -> list:
             COUNT(*) as incidents,
             SUM(deaths) as deaths,
             SUM(injured) as injured
-        FROM incidents
+        FROM verified_incidents
         WHERE province NOT IN ('', 'Unknown', 'Rwanda (unspecified)')
           AND substr(COALESCE(event_date, detected_at), 1, 4) >= '2015'
         GROUP BY province, year
@@ -456,7 +456,7 @@ def hour_of_day_pattern() -> list:
             CAST(substr(event_date, 12, 2) AS INTEGER) as hour,
             COUNT(*) as incidents,
             SUM(deaths) as deaths
-        FROM incidents
+        FROM verified_incidents
         WHERE length(event_date) >= 13
           AND substr(event_date, 12, 2) BETWEEN '00' AND '23'
         GROUP BY hour
@@ -536,7 +536,7 @@ def by_source_tier() -> list:
             SUM(deaths)  as deaths,
             SUM(injured) as injured,
             COUNT(DISTINCT source_name) as unique_sources
-        FROM incidents
+        FROM verified_incidents
         GROUP BY tier
         ORDER BY tier
     """).fetchall()
@@ -572,7 +572,7 @@ def sources_by_tier() -> dict:
             source_name,
             COUNT(*) as incidents,
             SUM(deaths) as deaths
-        FROM incidents
+        FROM verified_incidents
         WHERE source_name != ''
         GROUP BY tier, source_name
         ORDER BY tier, deaths DESC
@@ -594,3 +594,173 @@ def sources_by_tier() -> dict:
             for t in [1, 2, 3]
         ]
     }
+
+# ── MCI CLASSIFICATION (deaths ≥ 3) ──────────────────────────────────────────
+# Rwanda definition: a Mass Casualty Incident (MCI) is any single event
+# resulting in 3 or more deaths.
+
+MCI_THRESHOLD = 3
+
+
+def mci_summary_stats() -> dict:
+    """
+    Split summary stats into MCI (deaths ≥ 3) vs non-MCI buckets.
+    Also returns the overall MCI rate and the threshold used.
+    """
+    conn = get_db()
+    total          = conn.execute("SELECT COUNT(*) FROM verified_incidents").fetchone()[0]
+    mci_total      = conn.execute("SELECT COUNT(*) FROM verified_incidents WHERE deaths >= ?", (MCI_THRESHOLD,)).fetchone()[0]
+    mci_deaths     = conn.execute("SELECT SUM(deaths) FROM verified_incidents WHERE deaths >= ?", (MCI_THRESHOLD,)).fetchone()[0] or 0
+    mci_injured    = conn.execute("SELECT SUM(injured) FROM verified_incidents WHERE deaths >= ?", (MCI_THRESHOLD,)).fetchone()[0] or 0
+    mci_missing    = conn.execute("SELECT SUM(missing) FROM verified_incidents WHERE deaths >= ?", (MCI_THRESHOLD,)).fetchone()[0] or 0
+    non_mci_total  = total - mci_total
+    non_mci_deaths = conn.execute("SELECT SUM(deaths) FROM verified_incidents WHERE deaths < ? OR deaths IS NULL", (MCI_THRESHOLD,)).fetchone()[0] or 0
+    non_mci_injured= conn.execute("SELECT SUM(injured) FROM verified_incidents WHERE deaths < ? OR deaths IS NULL", (MCI_THRESHOLD,)).fetchone()[0] or 0
+
+    # Worst single MCI
+    worst = conn.execute("""
+        SELECT id, title, event_date, district, deaths, injured, incident_type
+        FROM verified_incidents WHERE deaths >= ?
+        ORDER BY deaths DESC LIMIT 1
+    """, (MCI_THRESHOLD,)).fetchone()
+    conn.close()
+
+    return {
+        "threshold":        MCI_THRESHOLD,
+        "total_incidents":  total,
+        "mci": {
+            "count":   mci_total,
+            "pct":     round(100 * mci_total / max(total, 1), 1),
+            "deaths":  mci_deaths,
+            "injured": mci_injured,
+            "missing": mci_missing,
+        },
+        "non_mci": {
+            "count":   non_mci_total,
+            "pct":     round(100 * non_mci_total / max(total, 1), 1),
+            "deaths":  non_mci_deaths,
+            "injured": non_mci_injured,
+        },
+        "worst_mci": dict(worst) if worst else None,
+    }
+
+
+def mci_by_type() -> list:
+    """Incident type breakdown for MCIs only."""
+    conn = get_db()
+    rows = conn.execute("""
+        SELECT incident_type,
+               COUNT(*)     as count,
+               SUM(deaths)  as total_deaths,
+               SUM(injured) as total_injured,
+               AVG(deaths)  as avg_deaths_per_event,
+               MAX(deaths)  as max_deaths
+        FROM verified_incidents
+        WHERE deaths >= ?
+        GROUP BY incident_type
+        ORDER BY total_deaths DESC
+    """, (MCI_THRESHOLD,)).fetchall()
+    conn.close()
+    return rows_to_list(rows)
+
+
+def mci_hotspots() -> list:
+    """District-level hotspot analysis restricted to MCIs."""
+    conn = get_db()
+    rows = conn.execute("""
+        SELECT district, province,
+               AVG(latitude)  as lat,
+               AVG(longitude) as lng,
+               COUNT(*)       as incident_count,
+               SUM(deaths)    as total_deaths,
+               SUM(injured)   as total_injured,
+               MAX(deaths)    as max_deaths,
+               GROUP_CONCAT(DISTINCT incident_type) as types
+        FROM verified_incidents
+        WHERE deaths >= ?
+          AND district != '' AND district IS NOT NULL
+        GROUP BY district
+        ORDER BY total_deaths DESC
+        LIMIT 20
+    """, (MCI_THRESHOLD,)).fetchall()
+    conn.close()
+    return rows_to_list(rows)
+
+
+def mci_monthly_trend(years: int = 5) -> list:
+    """Monthly incident + death count for MCIs over the last N years."""
+    from datetime import datetime, timedelta
+    cutoff = (datetime.utcnow() - timedelta(days=years * 365)).strftime("%Y-%m-%d")
+    conn = get_db()
+    rows = conn.execute("""
+        SELECT substr(COALESCE(event_date, detected_at), 1, 7) as month,
+               COUNT(*)    as incidents,
+               SUM(deaths) as deaths
+        FROM verified_incidents
+        WHERE deaths >= ?
+          AND COALESCE(event_date, detected_at) >= ?
+        GROUP BY month
+        ORDER BY month
+    """, (MCI_THRESHOLD, cutoff)).fetchall()
+    conn.close()
+    return rows_to_list(rows)
+
+
+def mci_yearly_trend() -> list:
+    """Year-by-year MCI count and death toll."""
+    conn = get_db()
+    rows = conn.execute("""
+        SELECT substr(COALESCE(event_date, detected_at), 1, 4) as year,
+               COUNT(*)     as incidents,
+               SUM(deaths)  as deaths,
+               SUM(injured) as injured,
+               AVG(deaths)  as avg_deaths_per_event,
+               MAX(deaths)  as max_single_event_deaths
+        FROM verified_incidents
+        WHERE deaths >= ?
+        GROUP BY year
+        ORDER BY year
+    """, (MCI_THRESHOLD,)).fetchall()
+    conn.close()
+    return rows_to_list(rows)
+
+
+def mci_incidents(limit: int = 200, offset: int = 0) -> list:
+    """
+    Return MCI incidents (deaths ≥ threshold) ordered by date descending.
+    Includes all fields needed for the Data Explorer table.
+    """
+    conn = get_db()
+    rows = conn.execute("""
+        SELECT id, event_date, detected_at, title, incident_type,
+               district, province, latitude, longitude,
+               deaths, injured, missing, severity,
+               source_name, source_url, source_tier, media_type,
+               ai_summary, ai_confidence, status, is_historical
+        FROM verified_incidents
+        WHERE deaths >= ?
+        ORDER BY COALESCE(event_date, detected_at) DESC
+        LIMIT ? OFFSET ?
+    """, (MCI_THRESHOLD, limit, offset)).fetchall()
+    conn.close()
+    return rows_to_list(rows)
+
+
+def non_mci_incidents(limit: int = 200, offset: int = 0) -> list:
+    """
+    Return non-MCI incidents (deaths < threshold or null) ordered by date descending.
+    """
+    conn = get_db()
+    rows = conn.execute("""
+        SELECT id, event_date, detected_at, title, incident_type,
+               district, province, latitude, longitude,
+               deaths, injured, missing, severity,
+               source_name, source_url, source_tier, media_type,
+               ai_summary, ai_confidence, status, is_historical
+        FROM verified_incidents
+        WHERE deaths < ? OR deaths IS NULL
+        ORDER BY COALESCE(event_date, detected_at) DESC
+        LIMIT ? OFFSET ?
+    """, (MCI_THRESHOLD, limit, offset)).fetchall()
+    conn.close()
+    return rows_to_list(rows)

@@ -2,8 +2,14 @@
 app.py — Flask backend for Rwanda MCI Surveillance System
 Works locally (Windows/Mac/Linux) and on Render.com
 """
+# Load .env file if present (local development)
+try:
+    from dotenv import load_dotenv; load_dotenv()
+except ImportError:
+    pass  # python-dotenv not installed — set env vars manually
+
 import os, json, threading, time, logging
-from datetime import datetime
+from datetime import datetime, timedelta
 from flask import Flask, jsonify, send_from_directory, request
 
 # ── paths ─────────────────────────────────────────────────────────────────────
@@ -59,6 +65,10 @@ from analytics import (
     deadliest_incidents, year_over_year, province_trend,
     hour_of_day_pattern, peak_months_summary,
     by_source_tier, sources_by_tier,
+    # MCI classification
+    mci_summary_stats, mci_by_type, mci_hotspots,
+    mci_monthly_trend, mci_yearly_trend,
+    mci_incidents, non_mci_incidents,
 )
 
 # ── background scheduler ──────────────────────────────────────────────────────
@@ -382,19 +392,498 @@ def _filtered_rows(args):
         result.append(d)
     return result
 
+# ── MCI CLASSIFICATION ROUTES ─────────────────────────────────────────────────
+
+@app.route("/api/mci/stats")
+def api_mci_stats():
+    """MCI vs non-MCI split: counts, deaths, injured, worst event."""
+    return jsonify(mci_summary_stats())
+
+@app.route("/api/mci/types")
+def api_mci_types():
+    """Incident type breakdown for MCIs only (deaths ≥ 3)."""
+    return jsonify(mci_by_type())
+
+@app.route("/api/mci/hotspots")
+def api_mci_hotspots():
+    """District hotspots restricted to MCI events."""
+    return jsonify(mci_hotspots())
+
+@app.route("/api/mci/monthly")
+def api_mci_monthly():
+    years = int(request.args.get("years", 5))
+    return jsonify(mci_monthly_trend(years))
+
+@app.route("/api/mci/yearly")
+def api_mci_yearly():
+    return jsonify(mci_yearly_trend())
+
+@app.route("/api/mci/incidents")
+def api_mci_incidents():
+    """Paginated list of MCI incidents (deaths ≥ 3)."""
+    limit  = int(request.args.get("limit",  200))
+    offset = int(request.args.get("offset", 0))
+    return jsonify(mci_incidents(limit, offset))
+
+@app.route("/api/non-mci/incidents")
+def api_non_mci_incidents():
+    """Paginated list of non-MCI incidents (deaths < 3)."""
+    limit  = int(request.args.get("limit",  200))
+    offset = int(request.args.get("offset", 0))
+    return jsonify(non_mci_incidents(limit, offset))
+
+
+# ── CLAUDE AI ROUTES ──────────────────────────────────────────────────────────
+
+@app.route("/api/ai/summarize/<int:iid>", methods=["POST"])
+def api_ai_summarize(iid):
+    """Generate/refresh Claude AI summary for a single incident."""
+    force = (request.json or {}).get("force", False)
+    conn  = get_db()
+    row   = conn.execute("SELECT * FROM incidents WHERE id=?", (iid,)).fetchone()
+    conn.close()
+    if not row:
+        return jsonify({"error": "Incident not found"}), 404
+    inc = dict(row)
+    if inc.get("ai_summary") and not force:
+        return jsonify({"summary": inc["ai_summary"], "confidence": inc.get("ai_confidence", 0.0), "flags": [], "cached": True})
+    try:
+        from claude_ai import summarize_incident
+        result = summarize_incident(inc)
+    except (ImportError, EnvironmentError) as exc:
+        return jsonify({"error": str(exc)}), 503
+    if result.get("summary"):
+        conn = get_db()
+        conn.execute("UPDATE incidents SET ai_summary=?, ai_confidence=? WHERE id=?",
+                     (result["summary"], result["confidence"], iid))
+        conn.commit()
+        conn.close()
+    return jsonify(result)
+
+
+@app.route("/api/ai/data-quality")
+def api_ai_data_quality():
+    """Run Claude data-quality analysis on recent incidents."""
+    days     = int(request.args.get("days", 90))
+    mci_only = request.args.get("mci_only", "0") == "1"
+    cutoff   = (datetime.utcnow() - timedelta(days=days)).isoformat()
+    where    = "detected_at >= ?"
+    params   = [cutoff]
+    if mci_only:
+        where += " AND deaths >= 3"
+    conn = get_db()
+    rows = conn.execute(f"""
+        SELECT id, title, event_date, detected_at, incident_type, district,
+               province, deaths, injured, missing, source_name, ai_summary
+        FROM incidents WHERE {where} ORDER BY detected_at DESC
+    """, params).fetchall()
+    conn.close()
+    try:
+        from claude_ai import data_quality_report
+        return jsonify(data_quality_report([dict(r) for r in rows]))
+    except (ImportError, EnvironmentError) as exc:
+        return jsonify({"error": str(exc)}), 503
+
+
+@app.route("/api/ai/narrative")
+def api_ai_narrative():
+    """Generate Claude MCI surveillance narrative for a period."""
+    days   = int(request.args.get("days", 30))
+    label  = request.args.get("label", f"Last {days} days")
+    cutoff = (datetime.utcnow() - timedelta(days=days)).isoformat()[:10]
+    conn   = get_db()
+    rows   = conn.execute("""
+        SELECT id, event_date, title, incident_type, district, province,
+               deaths, injured, missing, source_name
+        FROM incidents WHERE deaths >= 3
+          AND COALESCE(event_date, detected_at) >= ?
+        ORDER BY deaths DESC
+    """, (cutoff,)).fetchall()
+    conn.close()
+    try:
+        from claude_ai import mci_narrative
+        return jsonify(mci_narrative([dict(r) for r in rows], label))
+    except (ImportError, EnvironmentError) as exc:
+        return jsonify({"error": str(exc)}), 503
+
+
+@app.route("/api/ai/batch-summarize", methods=["POST"])
+def api_ai_batch_summarize():
+    """Queue AI summaries for incidents without one (background thread)."""
+    body     = request.json or {}
+    limit    = int(body.get("limit", 50))
+    mci_only = bool(body.get("mci_only", False))
+    where    = "(ai_summary IS NULL OR ai_summary = '')"
+    if mci_only:
+        where += " AND deaths >= 3"
+    conn = get_db()
+    rows = conn.execute(
+        f"SELECT id FROM incidents WHERE {where} ORDER BY deaths DESC LIMIT ?", (limit,)
+    ).fetchall()
+    conn.close()
+    ids = [r["id"] for r in rows]
+    if not ids:
+        return jsonify({"ok": True, "message": "No incidents need summarizing", "queued": 0})
+    def _do_batch():
+        try:
+            from claude_ai import summarize_incident
+        except (ImportError, EnvironmentError) as exc:
+            logger.error("batch-summarize: %s", exc)
+            return
+        for iid in ids:
+            try:
+                conn = get_db()
+                row  = conn.execute("SELECT * FROM incidents WHERE id=?", (iid,)).fetchone()
+                conn.close()
+                if not row:
+                    continue
+                result = summarize_incident(dict(row))
+                if result.get("summary"):
+                    conn = get_db()
+                    conn.execute("UPDATE incidents SET ai_summary=?, ai_confidence=? WHERE id=?",
+                                 (result["summary"], result["confidence"], iid))
+                    conn.commit()
+                    conn.close()
+            except Exception as exc:
+                logger.warning("batch-summarize incident %d: %s", iid, exc)
+    threading.Thread(target=_do_batch, daemon=True).start()
+    return jsonify({"ok": True, "queued": len(ids), "message": f"Summarizing {len(ids)} incidents in background"})
+
+
+@app.route("/api/ai/batch-verify-rwanda", methods=["POST"])
+def api_batch_verify_rwanda():
+    """
+    Re-verify Rwanda relevance for existing incidents using Claude.
+    POST body: optional {"limit": 100, "unverified_only": true}
+      unverified_only=true  → only incidents where rwanda_verified IS NULL
+      unverified_only=false → re-check ALL incidents (admin use)
+    Runs asynchronously. Check /api/scraper/status for DB counts.
+    """
+    body           = request.json or {}
+    limit          = int(body.get("limit", 100))
+    unverified_only = bool(body.get("unverified_only", True))
+
+    where = "rwanda_verified IS NULL" if unverified_only else "1=1"
+    conn  = get_db()
+    rows  = conn.execute(
+        f"SELECT id, title, description, full_text, source_name, source_url, district, province "
+        f"FROM incidents WHERE {where} ORDER BY deaths DESC LIMIT ?",
+        (limit,)
+    ).fetchall()
+    conn.close()
+    ids = [r["id"] for r in rows]
+    incidents_data = [dict(r) for r in rows]
+
+    if not ids:
+        return jsonify({"ok": True, "message": "No incidents need verification", "queued": 0})
+
+    def _do_verify():
+        try:
+            from claude_ai import verify_rwanda_relevance
+        except (ImportError, EnvironmentError) as exc:
+            logger.error("batch-verify-rwanda: %s", exc)
+            return
+        kept = rejected = 0
+        for inc in incidents_data:
+            try:
+                result = verify_rwanda_relevance(inc)
+                verified = 1 if result["is_rwanda"] else 0
+                conn = get_db()
+                conn.execute("UPDATE incidents SET rwanda_verified=? WHERE id=?", (verified, inc["id"]))
+                conn.commit()
+                conn.close()
+                if verified:
+                    kept += 1
+                else:
+                    rejected += 1
+                    logger.info("Batch verify — rejected: %s | %s", inc.get("title","")[:60], result.get("reason",""))
+            except Exception as exc:
+                logger.warning("batch-verify incident %s: %s", inc.get("id"), exc)
+        logger.info("Batch Rwanda verify complete: %d kept, %d rejected", kept, rejected)
+
+    threading.Thread(target=_do_verify, daemon=True).start()
+    return jsonify({
+        "ok":     True,
+        "queued": len(ids),
+        "message": f"Verifying {len(ids)} incidents in background — rejected ones will disappear from the dashboard automatically.",
+    })
+
+
+@app.route("/api/ai/batch-reclassify", methods=["POST"])
+def api_ai_batch_reclassify():
+    """
+    Reclassify incidents whose type is 'other' or NULL using Claude.
+    POST body: optional {"limit": 100}
+    Runs asynchronously in a background thread.
+    """
+    body  = request.json or {}
+    limit = int(body.get("limit", 100))
+
+    conn = get_db()
+    rows = conn.execute(
+        """SELECT id, title, description, full_text, source_name, source_url,
+                  district, province, incident_type
+           FROM incidents
+           WHERE incident_type IS NULL OR incident_type = '' OR incident_type = 'other'
+           ORDER BY deaths DESC
+           LIMIT ?""",
+        (limit,)
+    ).fetchall()
+    conn.close()
+
+    if not rows:
+        return jsonify({"ok": True, "message": "No unclassified incidents found", "queued": 0})
+
+    incidents_data = [dict(r) for r in rows]
+
+    _VALID_TYPES = {
+        "road_accident", "flood", "landslide", "explosion", "fire",
+        "stampede", "outbreak", "drowning", "building_collapse", "violence",
+    }
+
+    def _do_reclassify():
+        try:
+            from claude_ai import verify_rwanda_relevance
+        except (ImportError, EnvironmentError) as exc:
+            logger.error("batch-reclassify: %s", exc)
+            return
+        updated = deleted = 0
+        for inc in incidents_data:
+            try:
+                result = verify_rwanda_relevance(inc)
+                new_type = result.get("incident_type", "other")
+                conn = get_db()
+                if new_type and new_type in _VALID_TYPES:
+                    conn.execute(
+                        "UPDATE incidents SET incident_type=? WHERE id=?",
+                        (new_type, inc["id"])
+                    )
+                    logger.info("Reclassified #%s → %s | %s", inc["id"], new_type, inc.get("title","")[:60])
+                    updated += 1
+                else:
+                    # Claude still can't classify — delete the record
+                    conn.execute("DELETE FROM incidents WHERE id=?", (inc["id"],))
+                    logger.info("Deleted unclassifiable #%s: %s", inc["id"], inc.get("title","")[:60])
+                    deleted += 1
+                conn.commit()
+                conn.close()
+            except Exception as exc:
+                logger.warning("batch-reclassify incident %s: %s", inc.get("id"), exc)
+        logger.info("Batch reclassify complete: %d updated, %d deleted", updated, deleted)
+
+    threading.Thread(target=_do_reclassify, daemon=True).start()
+    return jsonify({
+        "ok":     True,
+        "queued": len(incidents_data),
+        "message": f"Reclassifying {len(incidents_data)} untyped incidents — anything Claude can't classify will be deleted. Refresh when done.",
+    })
+
+
+@app.route("/api/admin/delete-unclassified", methods=["POST"])
+def api_delete_unclassified():
+    """Immediately delete all incidents with incident_type='other', NULL, or empty."""
+    conn = get_db()
+    result = conn.execute(
+        "DELETE FROM incidents WHERE incident_type IS NULL OR incident_type = '' OR incident_type = 'other'"
+    )
+    deleted = result.rowcount
+    conn.commit()
+    conn.close()
+    logger.info("Deleted %d unclassified incidents", deleted)
+    return jsonify({"ok": True, "deleted": deleted, "message": f"Deleted {deleted} unclassified incidents."})
+
+
 # ── module-level initialisation (runs under gunicorn too) ─────────────────────
 # Create database schema and start background scheduler when the module is
 # imported. This ensures gunicorn workers have a working DB before serving
 # any requests. Guarded with a flag so it only runs once even with --preload.
 _INITIALISED = False
 
+def _auto_reclassify():
+    """
+    On startup, silently reclassify any incidents still typed as 'other'.
+    Runs in a background thread so it never delays the first request.
+    Incidents Claude can't classify get deleted.
+    Only runs when ANTHROPIC_API_KEY is present.
+    """
+    import os
+    if not os.environ.get("ANTHROPIC_API_KEY"):
+        return
+    try:
+        from claude_ai import verify_rwanda_relevance
+    except Exception:
+        return
+
+    _VALID_TYPES = {
+        "road_accident", "flood", "landslide", "explosion", "fire",
+        "stampede", "outbreak", "drowning", "building_collapse", "violence",
+    }
+
+    conn = get_db()
+    rows = conn.execute(
+        """SELECT id, title, description, full_text, source_name, source_url,
+                  district, province, incident_type
+           FROM incidents
+           WHERE incident_type IS NULL OR incident_type = '' OR incident_type = 'other'
+           ORDER BY deaths DESC"""
+    ).fetchall()
+    conn.close()
+
+    if not rows:
+        return
+
+    logger.info("Auto-reclassify: %d unclassified incidents found", len(rows))
+    updated = deleted = 0
+    for row in rows:
+        inc = dict(row)
+        try:
+            result = verify_rwanda_relevance(inc)
+            new_type = result.get("incident_type", "other")
+            conn = get_db()
+            if new_type and new_type in _VALID_TYPES:
+                conn.execute("UPDATE incidents SET incident_type=? WHERE id=?", (new_type, inc["id"]))
+                updated += 1
+                logger.info("Auto-reclassify #%s → %s", inc["id"], new_type)
+            else:
+                conn.execute("DELETE FROM incidents WHERE id=?", (inc["id"],))
+                deleted += 1
+                logger.info("Auto-reclassify deleted #%s (unclassifiable): %s", inc["id"], inc.get("title","")[:60])
+            conn.commit()
+            conn.close()
+        except Exception as exc:
+            logger.warning("Auto-reclassify #%s failed: %s", inc.get("id"), exc)
+
+    logger.info("Auto-reclassify complete: %d classified, %d deleted", updated, deleted)
+
+
+def _purge_animal_records():
+    """
+    On startup, delete any incidents that are about animal casualties only,
+    not human. Uses keyword matching on title — no Claude API needed.
+    Catches records like 'swine fever kills 60 pigs' that slip through
+    as 'outbreak' before Claude's human-only filter was in place.
+    """
+    ANIMAL_PATTERNS = [
+        "%swine fever%", "%swine flu%", "%african swine%", "% asf %",
+        "%pig%died%", "%pig%dead%", "%pig%kill%", "%pigs %died%",
+        "%poultry%died%", "%poultry%dead%", "%poultry%kill%",
+        "%bird flu%", "%avian flu%", "%avian influenza%",
+        "%cattle disease%", "%cattle died%", "%cattle dead%",
+        "%livestock disease%", "%livestock died%", "%livestock dead%",
+        "%foot-and-mouth%", "%foot and mouth%",
+        "%animal quarantine%", "%pig trade%", "%pig ban%",
+        "%veterinary%died%", "%chicken%died%", "%hen%died%",
+    ]
+    conn = get_db()
+    deleted = 0
+    for pat in ANIMAL_PATTERNS:
+        result = conn.execute(
+            "DELETE FROM incidents WHERE LOWER(title) LIKE ?", (pat,)
+        )
+        deleted += result.rowcount
+    conn.commit()
+    conn.close()
+    if deleted:
+        logger.info("Animal-record purge: deleted %d non-human incident(s)", deleted)
+
+
+def _re_enrich_casualties():
+    """
+    Re-extract deaths/injured counts for all existing records using the current
+    (fixed) extract_deaths / extract_injured functions from nlp.py.
+
+    Runs synchronously on startup so the corrected numbers are available
+    immediately. Safe to re-run repeatedly — only writes when a value changes.
+    Fixes cases like "Four sand miners killed" → deaths was 1, now corrected to 4.
+    """
+    try:
+        from nlp import extract_deaths, extract_injured
+        from database import make_semantic_id
+    except Exception as exc:
+        logger.warning("_re_enrich_casualties: import failed — %s", exc)
+        return
+
+    conn = get_db()
+    try:
+        rows = conn.execute(
+            "SELECT id, title, description, deaths, injured, incident_type, event_date, district FROM incidents"
+        ).fetchall()
+        updated = 0
+        for row in rows:
+            text = f"{row['title'] or ''} {row['description'] or ''}"
+            new_d = extract_deaths(text)
+            new_i = extract_injured(text)
+            if new_d != (row["deaths"] or 0) or new_i != (row["injured"] or 0):
+                # Recompute semantic_id with corrected casualty figures
+                new_sem = make_semantic_id({
+                    "deaths":        new_d,
+                    "injured":       new_i,
+                    "incident_type": row["incident_type"],
+                    "event_date":    row["event_date"],
+                    "district":      row["district"],
+                })
+                conn.execute(
+                    "UPDATE incidents SET deaths=?, injured=?, semantic_id=? WHERE id=?",
+                    (new_d, new_i, new_sem, row["id"]),
+                )
+                updated += 1
+        conn.commit()
+        if updated:
+            logger.info("Casualty re-enrichment: corrected %d record(s)", updated)
+    except Exception as exc:
+        logger.warning("_re_enrich_casualties failed: %s", exc)
+    finally:
+        conn.close()
+
+
+def _purge_violence_records():
+    """
+    Delete all violence-typed incidents and genocide/commemoration articles.
+    Violence is out of scope for this public-health accident/disaster system.
+    Runs synchronously on startup so the dashboard is clean immediately.
+    """
+    conn = get_db()
+    deleted = 0
+
+    # All records classified as 'violence'
+    r = conn.execute("DELETE FROM incidents WHERE incident_type = 'violence'")
+    deleted += r.rowcount
+
+    # Genocide commemoration articles that slipped through as other types
+    GENOCIDE_PATTERNS = [
+        "%genocide%remember%",
+        "%genocide%commemor%",
+        "%genocide%annivers%",
+        "%genocide%memorial%",
+        "%genocide at %",            # "Genocide at 32", "Genocide at 30"
+        "%world remembers%killed%",
+        "%remembrance%genocide%",
+        "%kwibuka%",                 # Kinyarwanda genocide memorial campaign
+        "%100 days%killed%",
+        "%100-day%killing%",
+    ]
+    for pat in GENOCIDE_PATTERNS:
+        r = conn.execute(
+            "DELETE FROM incidents WHERE LOWER(title) LIKE ?", (pat,)
+        )
+        deleted += r.rowcount
+
+    conn.commit()
+    conn.close()
+    if deleted:
+        logger.info("Violence/genocide purge: deleted %d incident(s)", deleted)
+
+
 def _initialise():
     global _INITIALISED
     if _INITIALISED:
         return
     init_db()
-    t = threading.Thread(target=scheduler, daemon=True)
-    t.start()
+    _purge_animal_records()           # instant keyword purge — runs synchronously
+    _purge_violence_records()         # remove violence/genocide records — runs synchronously
+    _re_enrich_casualties()           # fix death/injured counts — runs synchronously
+    threading.Thread(target=scheduler, daemon=True).start()
+    threading.Thread(target=_auto_reclassify, daemon=True).start()
     _INITIALISED = True
     logger.info("Database initialised and scheduler started.")
 

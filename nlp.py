@@ -74,6 +74,13 @@ PROVINCES = {
 
 RWANDA_CENTROID = (-1.9403, 29.8739)
 
+# ── Time/distance units that must NOT immediately follow a number word ─────────
+# Used in _word_num_search to block "four hours after X died" → 4 deaths
+_TIME_EXCLUSION = (
+    r"hours?|days?|months?|years?|minutes?|seconds?|weeks?|times?"
+    r"|km|meters?|miles?|kilog\w+"
+)
+
 # ── Written number lookup (for "two killed", "a dozen dead", etc.) ────────────
 WORD_TO_NUM = {
     "one": 1, "two": 2, "three": 3, "four": 4, "five": 5,
@@ -328,8 +335,18 @@ def _word_num_search(text: str, death_words: list, block_words: list = None) -> 
     block_pattern = "|".join(block_words) if block_words else None
 
     for word, num in WORD_TO_NUM.items():
-        # pattern1: "two killed", "three people dead"
-        if re.search(rf"\b{re.escape(word)}\b\s+(?:people\s+)?(?:{death_pattern})", t):
+        # pattern1: "two killed", "three people dead", "four sand miners killed",
+        #           "two spectators dead" — allows 0–2 victim-noun words between
+        #           the number and the death word (e.g. "sand miners", "spectators").
+        #           Limit is 2 to prevent false positives like
+        #           "Six officers identified the dead bodies" (3 words in between).
+        #           Blocked if the word immediately after the number is a
+        #           time/distance unit (e.g. "four hours").
+        if re.search(
+            rf"\b{re.escape(word)}\b\s+(?!(?:{_TIME_EXCLUSION})\b)"
+            rf"(?:(?:\w+)\s+){{0,2}}(?:{death_pattern})",
+            t,
+        ):
             best = max(best, num)
         # pattern2: "killed ... six" — but NOT if followed by a block word
         m = re.search(rf"(?:{death_pattern})\W{{1,15}}\b({re.escape(word)})\b", t)

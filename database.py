@@ -43,7 +43,8 @@ CREATE TABLE IF NOT EXISTS incidents (
     ai_summary      TEXT,
     ai_confidence   REAL DEFAULT 0.0,
     is_historical   INTEGER DEFAULT 0,
-    verified        INTEGER DEFAULT 0
+    verified        INTEGER DEFAULT 0,
+    rwanda_verified INTEGER DEFAULT NULL
 );
 
 CREATE TABLE IF NOT EXISTS scrape_log (
@@ -70,6 +71,15 @@ CREATE INDEX IF NOT EXISTS idx_incidents_type        ON incidents(incident_type)
 CREATE INDEX IF NOT EXISTS idx_incidents_detected    ON incidents(detected_at);
 CREATE INDEX IF NOT EXISTS idx_incidents_deaths      ON incidents(deaths);
 CREATE INDEX IF NOT EXISTS idx_incidents_semantic    ON incidents(semantic_id);
+"""
+
+# Created separately in init_db() — AFTER the ALTER TABLE that adds rwanda_verified
+# on existing databases, so the column always exists before the view is built.
+_VIEW_SQL = """
+DROP VIEW IF EXISTS verified_incidents;
+CREATE VIEW verified_incidents AS
+    SELECT * FROM incidents
+    WHERE rwanda_verified IS NULL OR rwanda_verified = 1;
 """
 
 # ── Words to exclude from semantic fingerprint ───────────────────────────────
@@ -178,12 +188,16 @@ def init_db():
     for col_def in [
         "ALTER TABLE incidents ADD COLUMN semantic_id TEXT",
         "ALTER TABLE incidents ADD COLUMN source_tier INTEGER DEFAULT 3",
+        "ALTER TABLE incidents ADD COLUMN rwanda_verified INTEGER DEFAULT NULL",
     ]:
         try:
             conn.execute(col_def)
             conn.commit()
         except:
             pass  # column already exists
+    # Build the view now that rwanda_verified is guaranteed to exist
+    conn.executescript(_VIEW_SQL)
+    conn.commit()
     conn.close()
 
 
@@ -269,14 +283,14 @@ def insert_incident(data: dict) -> bool:
              location, district, province, latitude, longitude,
              severity, deaths, injured, missing, incident_type, status,
              detected_at, published_at, event_date,
-             ai_summary, ai_confidence, is_historical, verified)
+             ai_summary, ai_confidence, is_historical, verified, rwanda_verified)
         VALUES
             (:source_id,:semantic_id,:title,:description,:full_text,
              :source_name,:source_url,:source_tier,:media_type,
              :location,:district,:province,:latitude,:longitude,
              :severity,:deaths,:injured,:missing,:incident_type,:status,
              :detected_at,:published_at,:event_date,
-             :ai_summary,:ai_confidence,:is_historical,:verified)
+             :ai_summary,:ai_confidence,:is_historical,:verified,:rwanda_verified)
     """, {
         "source_id":    sid,
         "semantic_id":  sem_id,
@@ -303,8 +317,9 @@ def insert_incident(data: dict) -> bool:
         "event_date":   data.get("event_date",""),
         "ai_summary":   data.get("ai_summary",""),
         "ai_confidence":float(data.get("ai_confidence") or 0.0),
-        "is_historical":1 if data.get("is_historical") else 0,
-        "verified":     0,
+        "is_historical":    1 if data.get("is_historical") else 0,
+        "verified":         0,
+        "rwanda_verified":  data.get("rwanda_verified"),  # None/1/0
     })
     conn.commit()
     conn.close()
