@@ -1,114 +1,145 @@
 # NHIC MCI Surveillance
 
-Media-based surveillance of civilian Mass Casualty Incidents (MCI, 3+ deaths) in Rwanda,
-for the National Health Intelligence Centre (NHIC).
+Media-based surveillance of civilian **Mass Casualty Incidents (MCIs)** in Rwanda for the
+**National Health Intelligence Centre (NHIC)**.
 
-| Folder | What it is | Runs on |
-|---|---|---|
-| `frontend/` | Next.js dashboard + login | Vercel |
-| `scraper/` | Python scraper, NLP and AI checks (Gemini or Claude) | GitHub Actions, hourly |
-| — | Postgres database | Neon |
+The system continuously collects news reports, identifies incidents that happened in Rwanda and
+harmed people — road accidents, floods, landslides, fires, explosions, stampedes, drownings,
+building collapses and disease outbreaks — and presents them on a secure dashboard for
+public-health decision-making. An incident with **3 or more deaths** is classified as an MCI.
 
 ---
 
-## Run it locally (Windows / PowerShell)
+## How it works
 
-### You need
-- **Node.js 20.9+** and **Python 3.12+**
-- A **Neon** connection string (use a `dev` branch in Neon so tests don't touch live data)
+```
+News sources ──► Scraper (hourly, GitHub Actions) ──► Neon Postgres ──► Dashboard (Vercel)
+                  • collect articles                                     • MCI classification
+                  • extract location & casualties                        • analytics & trends
+                  • AI check: in Rwanda? in scope?                       • map & data explorer
+                  • de-duplicate & store
+```
 
-### 1. One-time setup
+1. **Collect** — RSS feeds, Google News, ReliefWeb, AllAfrica and Rwandan news sites are scraped every hour.
+2. **Extract** — NLP finds the district, casualty counts and incident type in each article.
+3. **Verify** — an AI model (Gemini or Claude) confirms the event happened in Rwanda and is in scope,
+   rejecting foreign events, commemorations, statistics reports, violence and similar articles.
+   If the AI is unavailable, the incident is kept as *unverified* and re-checked later.
+4. **Store** — duplicates of the same event from different outlets are merged; results go to Postgres.
+5. **Present** — the dashboard reads the database directly; users sign in with email and password.
 
-Run these from the project folder:
+## Tech stack
 
-```powershell
-# 1. Settings — one .env file for everything
-copy .env.example .env
-#    Open .env and fill in: DATABASE_URL, NEXTAUTH_SECRET, GEMINI_API_KEY
+| Part | Technology | Hosting |
+|---|---|---|
+| Dashboard | Next.js 16, React 19, TypeScript, Tailwind CSS, Recharts, Leaflet | Vercel |
+| Scraper & AI checks | Python 3.12, BeautifulSoup, Gemini / Claude APIs | GitHub Actions (hourly) |
+| Database | PostgreSQL | Neon |
+| Authentication | NextAuth (email + password, JWT sessions) | — |
 
-# 2. Python (scraper)
+## Project structure
+
+```
+frontend/              Next.js dashboard
+  src/app/             pages: landing, login/sign-up, dashboard views, API routes
+  src/server/          database queries and auth helpers (server-only)
+  src/components/      UI components and charts
+scraper/               Python data pipeline
+  jobs.py              command-line entry point for every task
+  scraper.py           source collectors
+  nlp.py               location, casualty and incident-type extraction
+  ai.py                AI verification and summaries
+  database.py          Postgres access and de-duplication
+  schema.sql           database schema
+docs/                  architecture and deployment guides
+.github/workflows/     scheduled scrape job
+.env.example           all configuration settings
+```
+
+---
+
+## Run locally
+
+### Prerequisites
+
+- Node.js 20.9 or later
+- Python 3.12 or later
+- A PostgreSQL database — a free [Neon](https://neon.tech) project works well
+- Optional: a [Gemini](https://aistudio.google.com/apikey) or [Anthropic](https://console.anthropic.com) API key for the AI checks
+
+### 1. Configure
+
+```bash
+cp .env.example .env
+```
+
+Fill in `.env` (one file, used by both the scraper and the dashboard):
+
+| Setting | Required | Description |
+|---|---|---|
+| `DATABASE_URL` | Yes | PostgreSQL connection string |
+| `NEXTAUTH_SECRET` | Yes | Random secret for login sessions — generate with `openssl rand -base64 32` |
+| `NEXTAUTH_URL` | Yes (local) | `http://localhost:3000` |
+| `GEMINI_API_KEY` or `ANTHROPIC_API_KEY` | No | Enables AI verification and summaries |
+| `AI_PROVIDER` | No | `gemini` or `claude` (defaults to whichever key is set) |
+| `RESEND_API_KEY` | No | Sends password-reset emails; without it the link is printed in the server log |
+
+### 2. Set up the scraper and database
+
+```bash
 python -m venv venv
-venv\Scripts\activate
-pip install -r scraper\requirements.txt
+source venv/bin/activate          # Windows: venv\Scripts\activate
+pip install -r scraper/requirements.txt
 
-# 3. Database tables (safe to re-run)
 cd scraper
-python jobs.py init-db
+python jobs.py init-db            # creates the tables (safe to re-run)
+python jobs.py scrape             # fetches the latest articles
 cd ..
+```
 
-# 4. Node (dashboard)
+For a brand-new database, `python jobs.py scrape --historical` backfills incidents from 2010
+onwards (this takes a long time).
+
+### 3. Run the dashboard
+
+```bash
 cd frontend
 npm install
-cd ..
-```
-
-Need a `NEXTAUTH_SECRET`? Generate one with:
-```powershell
-node -e "console.log(require('crypto').randomBytes(32).toString('base64'))"
-```
-
-### 2. Start the dashboard
-
-```powershell
-cd frontend
 npm run dev
 ```
 
-Open **http://localhost:3000/signup**, create an account, then sign in.
-Stop it with `Ctrl+C`.
+Open <http://localhost:3000/signup>, create an account, and sign in.
 
-> Always use `npm run dev` (not `npx next dev`) — only the npm script loads the root `.env`.
-
-### 3. Get fresh data (optional — GitHub does this every hour)
-
-In a second terminal:
-
-```powershell
-venv\Scripts\activate
-cd scraper
-python jobs.py scrape
-```
-
-The dashboard picks up new incidents within a minute.
+Use `npm run dev` rather than `npx next dev` — the npm script loads the shared `.env` file.
 
 ---
 
-## Useful commands
+## Scraper commands
 
-All scraper commands run from `scraper\` with the venv active:
+Run from `scraper/` with the virtual environment active:
 
-| Command | What it does |
+| Command | Purpose |
 |---|---|
-| `python jobs.py scrape` | Fetch new articles (a few minutes) |
-| `python jobs.py scrape --historical` | Full backfill from 2010 (slow — only for an empty database) |
-| `python jobs.py verify --all` | Re-check every incident with the AI (Rwanda + in scope?) |
-| `python jobs.py summarize` | Write AI summaries for incidents without one |
-| `python jobs.py eval-ai` | Test the AI against 16 labelled examples |
-| `python jobs.py migrate-sqlite ..\data\mci_rwanda.db` | One-time import of the old SQLite data |
-| `python jobs.py --help` | List everything |
+| `python jobs.py scrape` | Fetch new articles |
+| `python jobs.py scrape --historical` | Full backfill from 2010 |
+| `python jobs.py verify [--all]` | AI-check unverified incidents (`--all` re-checks everything) |
+| `python jobs.py summarize` | Generate AI summaries for incidents without one |
+| `python jobs.py reclassify` | AI re-typing of incidents classified as "other" |
+| `python jobs.py reprocess` | Re-run the NLP extraction on every stored incident |
+| `python jobs.py eval-ai` | Test the AI checks against 16 labelled examples |
+| `python jobs.py migrate-sqlite <file>` | One-time import from the earlier SQLite version |
 
-Before pushing frontend changes:
+## Development checks
 
-```powershell
+```bash
 cd frontend
-npm run type-check; npm run lint; npm run build
+npm run type-check
+npm run lint
+npm run build
 ```
 
----
+## Deployment
 
-## Troubleshooting
-
-| Problem | Fix |
-|---|---|
-| "DATABASE_URL is not set" | Fill it in the root `.env`, then restart with `npm run dev` |
-| Port 3000 is taken (e.g. Metabase is running) | Stop it (`docker stop metabase`), or run `npm run dev -- -p 3001` and set `NEXTAUTH_URL=http://localhost:3001` in `.env` |
-| "Could not create the account" | Run `python jobs.py init-db` (creates the `users` table) |
-| AI checks skipped | Add `GEMINI_API_KEY` to `.env` (and `AI_PROVIDER=gemini`) |
-| Password-reset email not sent | Locally the reset link is printed in the `npm run dev` terminal |
-
----
-
-## Deploy
-
-See [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md) — Neon → GitHub secrets → Vercel.
-How it fits together: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
+The dashboard is deployed on Vercel, the scraper runs as a scheduled GitHub Actions workflow,
+and both use the same Neon database. See [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md) for the
+step-by-step setup and [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for design details.
