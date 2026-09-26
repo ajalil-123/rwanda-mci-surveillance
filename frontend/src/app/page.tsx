@@ -85,12 +85,12 @@ export default function LandingPage() {
             <FeatureCard
               icon={<ShieldCheck size={24} weight="duotone" />}
               title="Three-tier classification"
-              desc="Every source graded — Official, Journalism, Other — for credibility-weighted analysis."
+              desc="Every source graded as Official, Journalism or Other for credibility-weighted analysis."
             />
             <FeatureCard
               icon={<MapPinArea size={24} weight="duotone" />}
               title="Geographic hotspots"
-              desc="36 Rwandan districts geo-tagged, mapped, and ranked by risk score."
+              desc="All 30 Rwandan districts geo-tagged, mapped, and ranked by risk score."
             />
             <FeatureCard
               icon={<ChartLineUp size={24} weight="duotone" />}
@@ -105,7 +105,7 @@ export default function LandingPage() {
       <footer className="border-t border-border py-8">
         <div className="container flex items-center justify-between text-xs text-muted-foreground">
           <span>National Health Intelligence Centre (NHIC), Rwanda</span>
-          <span>Internal system — authorised personnel only</span>
+          <span>Internal system. Authorised personnel only.</span>
         </div>
       </footer>
     </div>

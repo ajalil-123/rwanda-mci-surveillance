@@ -17,7 +17,7 @@ const mono = JetBrains_Mono({
 
 export const metadata: Metadata = {
   title:       "NHIC MCI Surveillance",
-  description: "Mass Casualty Incident surveillance for Rwanda — National Health Intelligence Centre",
+  description: "Mass Casualty Incident surveillance for Rwanda by the National Health Intelligence Centre",
 };
 
 export default function RootLayout({

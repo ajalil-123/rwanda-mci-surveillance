@@ -46,12 +46,12 @@ async function get<T>(resource: string, params?: Record<string, number>): Promis
 /** A user-facing explanation of why a data request failed. */
 export function errorText(error: unknown): string {
   if (error instanceof ApiError) {
-    if (error.status === 401) return "Your session has expired — redirecting to sign in…";
-    if (error.status === 404) return "Data service not found — this deployment is out of date. Redeploy the latest version.";
+    if (error.status === 401) return "Your session has expired. Redirecting to sign in…";
+    if (error.status === 404) return "Data service not found. This deployment is out of date. Redeploy the latest version.";
     if (error.status >= 500) return "The database could not be queried. Check the server's DATABASE_URL and try again.";
     return `Could not load data (HTTP ${error.status}).`;
   }
-  return "Network error — check your connection and try again.";
+  return "Network error. Check your connection and try again.";
 }
 
 export const api = {

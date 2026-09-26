@@ -154,7 +154,7 @@ function Hotspots() {
               <TableRow key={h.district}>
                 <TableCell className="font-mono text-xs text-muted-foreground">{idx + 1}</TableCell>
                 <TableCell className="font-medium">{h.district}</TableCell>
-                <TableCell className="text-muted-foreground">{h.province || "—"}</TableCell>
+                <TableCell className="text-muted-foreground">{h.province || "N/A"}</TableCell>
                 <TableCell className="text-right font-mono tabular-nums">{formatNumber(h.incident_count)}</TableCell>
                 <TableCell className="text-right font-mono font-semibold tabular-nums text-destructive">
                   {formatNumber(h.total_deaths)}
@@ -166,7 +166,7 @@ function Hotspots() {
                   {"risk_score" in h ? h.risk_score.toFixed(1) : formatNumber(h.max_deaths)}
                 </TableCell>
                 <TableCell className="max-w-xs truncate text-xs text-muted-foreground" title={h.types ?? ""}>
-                  {h.types ? h.types.split(",").map(formatIncidentType).join(", ") : "—"}
+                  {h.types ? h.types.split(",").map(formatIncidentType).join(", ") : "N/A"}
                 </TableCell>
               </TableRow>
             ))}
@@ -188,7 +188,7 @@ function CaseFatality() {
     <Card>
       <CardHeader>
         <CardTitle>Case fatality rate by type</CardTitle>
-        <CardDescription>Deaths ÷ (deaths + injured) — how lethal each incident type is.</CardDescription>
+        <CardDescription>Deaths ÷ (deaths + injured): how lethal each incident type is.</CardDescription>
       </CardHeader>
       <CardContent>
         <DataState isLoading={isLoading} error={error} isEmpty={chartData.length === 0} height={320}>

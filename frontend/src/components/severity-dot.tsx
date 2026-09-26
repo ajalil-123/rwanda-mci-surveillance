@@ -12,7 +12,7 @@ export function SeverityDot({
 }) {
   const s = clampSeverity(level);
   const { label, className: color } = SEVERITY_LEVELS[s];
-  const text = `Severity ${s} — ${label}`;
+  const text = `Severity ${s}: ${label}`;
 
   return (
     <span className={cn("inline-flex items-center gap-1.5", className)} title={text}>

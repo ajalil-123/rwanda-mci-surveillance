@@ -35,7 +35,7 @@ const RAINY_MONTHS = new Set([3, 4, 5, 10, 11]);
 const TIER_INFO: Record<SourceTier, { label: string; credibility: string }> = {
   1: { label: "Official Communication", credibility: "Highest" },
   2: { label: "Official Journalism / Social Media", credibility: "High" },
-  3: { label: "Other Sources", credibility: "Moderate — verify before action" },
+  3: { label: "Other Sources", credibility: "Moderate, verify before action" },
 };
 
 function pct(part: number, total: number): number {

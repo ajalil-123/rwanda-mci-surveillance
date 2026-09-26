@@ -49,11 +49,11 @@ export function cleanTitle(title: string, sourceName?: string | null): string {
   return t || title;
 }
 
-/** ISO date string → "yyyy-MM-dd", or "—" when missing/unparseable. */
+/** ISO date string → "yyyy-MM-dd", or "N/A" when missing/unparseable. */
 export function formatDate(value: string | null | undefined): string {
-  if (!value) return "—";
+  if (!value) return "N/A";
   const d = parseISO(value);
-  return isValid(d) ? format(d, "yyyy-MM-dd") : "—";
+  return isValid(d) ? format(d, "yyyy-MM-dd") : "N/A";
 }
 
 /** The event date if known, otherwise when the article was detected. */

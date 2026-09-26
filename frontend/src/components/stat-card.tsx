@@ -39,7 +39,7 @@ export function StatCard({
       ) : (
         <>
           <div className={cn("mt-2 font-mono text-2xl font-semibold tabular-nums", ACCENTS[accent])}>
-            {typeof value === "string" ? value : value == null ? "—" : formatNumber(value)}
+            {typeof value === "string" ? value : value == null ? "N/A" : formatNumber(value)}
           </div>
           {hint ? <div className="mt-1 text-xs text-muted-foreground">{hint}</div> : null}
         </>

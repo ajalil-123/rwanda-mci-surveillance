@@ -38,7 +38,7 @@ export async function requestPasswordReset(_prev: ForgotState, form: FormData): 
           `Open this link within ${RESET_TTL_MINUTES} minutes to choose a new password:`,
           link,
           "",
-          "If you did not ask for this, ignore this email — your password stays the same.",
+          "If you did not ask for this, ignore this email. Your password stays the same.",
         ].join("\n"),
       });
     }

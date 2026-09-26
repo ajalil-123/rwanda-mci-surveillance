@@ -192,16 +192,16 @@ function MciRow({ inc }: { inc: Incident }) {
         {formatIncidentType(inc.incident_type)}
       </TableCell>
       <TableCell className="whitespace-nowrap text-xs">
-        {isKnownDistrict(inc.district) ? inc.district : <span className="text-muted-foreground">—</span>}
+        {isKnownDistrict(inc.district) ? inc.district : <span className="text-muted-foreground">N/A</span>}
       </TableCell>
       <TableCell className="text-right font-mono font-semibold tabular-nums text-destructive">
         {formatNumber(inc.deaths)}
       </TableCell>
       <TableCell className="text-right font-mono tabular-nums text-amber-600">
-        {inc.injured ? formatNumber(inc.injured) : "—"}
+        {formatNumber(inc.injured)}
       </TableCell>
       <TableCell className="max-w-[160px] truncate text-xs text-muted-foreground" title={inc.source_name ?? ""}>
-        {inc.source_name || "—"}
+        {inc.source_name || "N/A"}
       </TableCell>
       <TableCell className="text-center">
         <TierBadge tier={inc.source_tier} />

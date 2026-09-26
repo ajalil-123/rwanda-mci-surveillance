@@ -43,19 +43,19 @@ function PeakSummary() {
   const { data, isLoading } = useSWR("peak-months", api.peakMonths);
   return (
     <div className="grid grid-cols-2 gap-4 md:grid-cols-4">
-      <StatCard loading={isLoading} label="Peak month" value={data?.peak_month ?? "—"} hint={data?.peak_month_avg_inc != null ? `${data.peak_month_avg_inc} incidents / yr avg` : undefined} />
-      <StatCard loading={isLoading} label="Quietest month" value={data?.low_month ?? "—"} accent="muted" />
+      <StatCard loading={isLoading} label="Peak month" value={data?.peak_month ?? "N/A"} hint={data?.peak_month_avg_inc != null ? `${data.peak_month_avg_inc} incidents / yr avg` : undefined} />
+      <StatCard loading={isLoading} label="Quietest month" value={data?.low_month ?? "N/A"} accent="muted" />
       <StatCard
         loading={isLoading}
         label="Rainy vs dry season"
-        value={data?.rainy_vs_dry_ratio != null ? `${data.rainy_vs_dry_ratio}×` : "—"}
+        value={data?.rainy_vs_dry_ratio != null ? `${data.rainy_vs_dry_ratio}×` : "N/A"}
         accent="warning"
         hint="Incident rate ratio"
       />
       <StatCard
         loading={isLoading}
         label="Deadliest year"
-        value={data?.worst_year ?? "—"}
+        value={data?.worst_year ?? "N/A"}
         accent="destructive"
         hint={data?.worst_year_deaths != null ? `${formatNumber(data.worst_year_deaths)} deaths` : undefined}
       />
@@ -162,7 +162,7 @@ function Seasonal() {
 }
 
 function PctChange({ value }: { value: number | null }) {
-  if (value == null) return <span className="text-muted-foreground">—</span>;
+  if (value == null) return <span className="text-muted-foreground">N/A</span>;
   // More incidents/deaths is bad, so increases are shown in red
   const up = value > 0;
   const Icon = up ? ArrowUpRight : ArrowDownRight;

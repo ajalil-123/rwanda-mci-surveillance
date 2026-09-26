@@ -215,16 +215,16 @@ export default function ExplorerPage() {
                   {formatIncidentType(i.incident_type)}
                 </TableCell>
                 <TableCell className="whitespace-nowrap text-xs">
-                  {isKnownDistrict(i.district) ? i.district : <span className="text-muted-foreground">—</span>}
+                  {isKnownDistrict(i.district) ? i.district : <span className="text-muted-foreground">N/A</span>}
                 </TableCell>
                 <TableCell className="text-right font-mono font-semibold tabular-nums text-destructive">
                   {formatNumber(i.deaths)}
                 </TableCell>
                 <TableCell className="text-right font-mono tabular-nums text-amber-600">
-                  {i.injured ? formatNumber(i.injured) : "—"}
+                  {formatNumber(i.injured)}
                 </TableCell>
                 <TableCell className="max-w-[160px] truncate text-xs text-muted-foreground" title={i.source_name ?? ""}>
-                  {i.source_name || "—"}
+                  {i.source_name || "N/A"}
                 </TableCell>
                 <TableCell className="text-center">
                   <TierBadge tier={i.source_tier} />
