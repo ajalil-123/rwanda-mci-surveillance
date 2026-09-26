@@ -61,7 +61,7 @@ export function Sidebar() {
           <div className="flex flex-col leading-tight">
             <span className="text-sm font-semibold">NHIC</span>
             <span className="text-[10px] uppercase tracking-wider text-muted-foreground">
-              Surveillance
+              MCI Surveillance
             </span>
           </div>
         </div>

@@ -4,10 +4,9 @@ import { useMemo, useState } from "react";
 import useSWR from "swr";
 import { ArrowSquareOut, Bandaids, Funnel, MapPin, Skull } from "@phosphor-icons/react";
 import { api, errorText, type Incident, type SourceTier } from "@/lib/api";
-import { formatDate, formatIncidentType, formatNumber, incidentDate, isKnownDistrict } from "@/lib/format";
+import { cleanTitle, formatDate, formatIncidentType, formatNumber, incidentDate, isKnownDistrict } from "@/lib/format";
 import { cn } from "@/lib/utils";
 import { PageHeader } from "@/components/page-header";
-import { SeverityDot } from "@/components/severity-dot";
 import { StatCard } from "@/components/stat-card";
 import { TierBadge } from "@/components/tier-badge";
 import { Card } from "@/components/ui/card";
@@ -52,7 +51,8 @@ export default function MciClassificationPage() {
     () =>
       (data ?? [])
         .filter((i) => i.deaths >= minDeaths && tiers.has(i.source_tier ?? 3))
-        .sort((a, b) => b.deaths - a.deaths),
+        // Latest first
+        .sort((a, b) => incidentDate(b).localeCompare(incidentDate(a))),
     [data, minDeaths, tiers]
   );
 
@@ -86,10 +86,10 @@ export default function MciClassificationPage() {
       />
 
       <div className="grid grid-cols-2 gap-4 md:grid-cols-4">
-        <StatCard label="Matching incidents" value={summary.count} />
-        <StatCard label="Total deaths" value={summary.deaths} accent="destructive" icon={<Skull size={16} weight="fill" />} />
-        <StatCard label="Total injured" value={summary.injured} accent="warning" icon={<Bandaids size={16} weight="fill" />} />
-        <StatCard label="Districts affected" value={summary.districts} accent="muted" icon={<MapPin size={16} weight="fill" />} />
+        <StatCard loading={isLoading} label="Matching incidents" value={summary.count} />
+        <StatCard loading={isLoading} label="Total deaths" value={summary.deaths} accent="destructive" icon={<Skull size={16} weight="fill" />} />
+        <StatCard loading={isLoading} label="Total injured" value={summary.injured} accent="warning" icon={<Bandaids size={16} weight="fill" />} />
+        <StatCard loading={isLoading} label="Districts affected" value={summary.districts} accent="muted" icon={<MapPin size={16} weight="fill" />} />
       </div>
 
       <Card className="flex flex-wrap items-center gap-4 p-4">
@@ -152,7 +152,6 @@ export default function MciClassificationPage() {
               <TableHead>Location</TableHead>
               <TableHead className="text-right">Deaths</TableHead>
               <TableHead className="text-right">Injured</TableHead>
-              <TableHead className="text-center">Severity</TableHead>
               <TableHead>Source</TableHead>
               <TableHead className="text-center">Tier</TableHead>
               <TableHead>
@@ -161,14 +160,14 @@ export default function MciClassificationPage() {
             </TableRow>
           </TableHeader>
           <TableBody>
-            {isLoading ? <TableMessage colSpan={10}>Loading…</TableMessage> : null}
+            {isLoading ? <TableMessage colSpan={9}>Loading…</TableMessage> : null}
             {error ? (
-              <TableMessage colSpan={10} tone="error">
+              <TableMessage colSpan={9} tone="error">
                 {errorText(error)}
               </TableMessage>
             ) : null}
             {data && incidents.length === 0 ? (
-              <TableMessage colSpan={10}>No incidents match the current filter.</TableMessage>
+              <TableMessage colSpan={9}>No incidents match the current filter.</TableMessage>
             ) : null}
             {incidents.map((i) => (
               <MciRow key={i.id} inc={i} />
@@ -186,10 +185,10 @@ function MciRow({ inc }: { inc: Incident }) {
       <TableCell className="whitespace-nowrap font-mono text-xs text-muted-foreground">
         {formatDate(incidentDate(inc))}
       </TableCell>
-      <TableCell className="max-w-md">
-        <div className="line-clamp-2">{inc.title}</div>
+      <TableCell className="min-w-[280px] max-w-xl whitespace-normal font-medium leading-snug">
+        {cleanTitle(inc.title, inc.source_name)}
       </TableCell>
-      <TableCell className="whitespace-nowrap text-xs capitalize text-muted-foreground">
+      <TableCell className="whitespace-nowrap text-xs text-muted-foreground">
         {formatIncidentType(inc.incident_type)}
       </TableCell>
       <TableCell className="whitespace-nowrap text-xs">
@@ -200,9 +199,6 @@ function MciRow({ inc }: { inc: Incident }) {
       </TableCell>
       <TableCell className="text-right font-mono tabular-nums text-amber-600">
         {inc.injured ? formatNumber(inc.injured) : "—"}
-      </TableCell>
-      <TableCell className="text-center">
-        <SeverityDot level={inc.severity} />
       </TableCell>
       <TableCell className="max-w-[160px] truncate text-xs text-muted-foreground" title={inc.source_name ?? ""}>
         {inc.source_name || "—"}

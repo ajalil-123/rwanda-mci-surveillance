@@ -6,10 +6,9 @@ import { format } from "date-fns";
 import { ArrowSquareOut, CaretDown, CaretUp, DownloadSimple, MagnifyingGlass } from "@phosphor-icons/react";
 import { api, errorText, type Incident } from "@/lib/api";
 import { toCsv, downloadCsv } from "@/lib/csv";
-import { formatDate, formatIncidentType, formatNumber, incidentDate, isKnownDistrict } from "@/lib/format";
+import { cleanTitle, formatDate, formatIncidentType, formatNumber, incidentDate, isKnownDistrict } from "@/lib/format";
 import { cn } from "@/lib/utils";
 import { PageHeader } from "@/components/page-header";
-import { SeverityDot } from "@/components/severity-dot";
 import { TierBadge } from "@/components/tier-badge";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -28,7 +27,7 @@ import {
 const PAGE_SIZE = 50;
 const ALL = "all";
 
-type SortKey = "date" | "title" | "incident_type" | "district" | "deaths" | "injured" | "severity";
+type SortKey = "date" | "title" | "incident_type" | "district" | "deaths" | "injured";
 type SortDir = "asc" | "desc";
 
 const CSV_COLUMNS = [
@@ -44,7 +43,6 @@ const CSV_COLUMNS = [
   "deaths",
   "injured",
   "missing",
-  "severity",
   "source_name",
   "source_url",
   "source_tier",
@@ -57,7 +55,6 @@ function sortValue(i: Incident, key: SortKey): string | number {
       return incidentDate(i);
     case "deaths":
     case "injured":
-    case "severity":
       return i[key] ?? 0;
     default:
       return (i[key] ?? "").toLowerCase();
@@ -189,7 +186,6 @@ export default function ExplorerPage() {
               <SortableHead label="Location" sortKey="district" sort={sort} onSort={toggleSort} />
               <SortableHead label="Deaths" sortKey="deaths" sort={sort} onSort={toggleSort} align="right" />
               <SortableHead label="Injured" sortKey="injured" sort={sort} onSort={toggleSort} align="right" />
-              <SortableHead label="Severity" sortKey="severity" sort={sort} onSort={toggleSort} align="center" />
               <TableHead>Source</TableHead>
               <TableHead className="text-center">Tier</TableHead>
               <TableHead>
@@ -199,23 +195,23 @@ export default function ExplorerPage() {
           </TableHeader>
           <TableBody>
             {error ? (
-              <TableMessage colSpan={10} tone="error">
+              <TableMessage colSpan={9} tone="error">
                 {errorText(error)}
               </TableMessage>
             ) : null}
-            {isLoading ? <TableMessage colSpan={10}>Loading…</TableMessage> : null}
+            {isLoading ? <TableMessage colSpan={9}>Loading…</TableMessage> : null}
             {data && filtered.length === 0 ? (
-              <TableMessage colSpan={10}>No incidents match the current filters.</TableMessage>
+              <TableMessage colSpan={9}>No incidents match the current filters.</TableMessage>
             ) : null}
             {pageRows.map((i) => (
               <TableRow key={i.id}>
                 <TableCell className="whitespace-nowrap font-mono text-xs text-muted-foreground">
                   {formatDate(incidentDate(i))}
                 </TableCell>
-                <TableCell className="max-w-md">
-                  <div className="line-clamp-2">{i.title}</div>
+                <TableCell className="min-w-[280px] max-w-xl whitespace-normal font-medium leading-snug">
+                  {cleanTitle(i.title, i.source_name)}
                 </TableCell>
-                <TableCell className="whitespace-nowrap text-xs capitalize text-muted-foreground">
+                <TableCell className="whitespace-nowrap text-xs text-muted-foreground">
                   {formatIncidentType(i.incident_type)}
                 </TableCell>
                 <TableCell className="whitespace-nowrap text-xs">
@@ -226,9 +222,6 @@ export default function ExplorerPage() {
                 </TableCell>
                 <TableCell className="text-right font-mono tabular-nums text-amber-600">
                   {i.injured ? formatNumber(i.injured) : "—"}
-                </TableCell>
-                <TableCell className="text-center">
-                  <SeverityDot level={i.severity} />
                 </TableCell>
                 <TableCell className="max-w-[160px] truncate text-xs text-muted-foreground" title={i.source_name ?? ""}>
                   {i.source_name || "—"}
@@ -296,13 +289,13 @@ function FilterSelect({
 }) {
   return (
     <Select value={value} onValueChange={onChange}>
-      <SelectTrigger className="w-40 capitalize" aria-label={label}>
+      <SelectTrigger className="w-40" aria-label={label}>
         <SelectValue />
       </SelectTrigger>
       <SelectContent>
         <SelectItem value={ALL}>All {label.toLowerCase()}s</SelectItem>
         {options.map((o) => (
-          <SelectItem key={o} value={o} className="capitalize">
+          <SelectItem key={o} value={o}>
             {formatOption(o)}
           </SelectItem>
         ))}

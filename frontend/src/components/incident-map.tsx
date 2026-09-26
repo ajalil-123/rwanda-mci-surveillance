@@ -3,7 +3,7 @@
 import "leaflet/dist/leaflet.css";
 import { CircleMarker, MapContainer, Popup, TileLayer } from "react-leaflet";
 import type { MapIncident } from "@/lib/api";
-import { formatDate, formatIncidentType, formatNumber, incidentDate } from "@/lib/format";
+import { cleanTitle, formatDate, formatIncidentType, formatNumber, incidentDate } from "@/lib/format";
 import { SEVERITY_LEVELS, clampSeverity } from "@/lib/severity";
 import { TierBadge } from "@/components/tier-badge";
 
@@ -48,12 +48,12 @@ export default function IncidentMap({ incidents }: { incidents: MapIncident[] })
           >
             <Popup>
               <div className="max-w-xs space-y-1.5 text-xs">
-                <div className="text-sm font-semibold leading-snug">{i.title}</div>
+                <div className="text-sm font-semibold leading-snug">{cleanTitle(i.title, i.source_name)}</div>
                 <div className="text-muted-foreground">
                   {formatDate(incidentDate(i))} · {i.district || "Unknown district"}
                   {i.province ? `, ${i.province}` : ""}
                 </div>
-                <div className="capitalize">{formatIncidentType(i.incident_type)}</div>
+                <div>{formatIncidentType(i.incident_type)}</div>
                 <div className="flex gap-3 font-mono">
                   <span className="font-semibold text-destructive">{formatNumber(i.deaths)} deaths</span>
                   <span className="text-amber-600">{formatNumber(i.injured)} injured</span>

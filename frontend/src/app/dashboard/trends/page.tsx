@@ -40,18 +40,20 @@ export default function TrendsPage() {
 }
 
 function PeakSummary() {
-  const { data } = useSWR("peak-months", api.peakMonths);
+  const { data, isLoading } = useSWR("peak-months", api.peakMonths);
   return (
     <div className="grid grid-cols-2 gap-4 md:grid-cols-4">
-      <StatCard label="Peak month" value={data?.peak_month ?? "—"} hint={data?.peak_month_avg_inc != null ? `${data.peak_month_avg_inc} incidents / yr avg` : undefined} />
-      <StatCard label="Quietest month" value={data?.low_month ?? "—"} accent="muted" />
+      <StatCard loading={isLoading} label="Peak month" value={data?.peak_month ?? "—"} hint={data?.peak_month_avg_inc != null ? `${data.peak_month_avg_inc} incidents / yr avg` : undefined} />
+      <StatCard loading={isLoading} label="Quietest month" value={data?.low_month ?? "—"} accent="muted" />
       <StatCard
+        loading={isLoading}
         label="Rainy vs dry season"
         value={data?.rainy_vs_dry_ratio != null ? `${data.rainy_vs_dry_ratio}×` : "—"}
         accent="warning"
         hint="Incident rate ratio"
       />
       <StatCard
+        loading={isLoading}
         label="Deadliest year"
         value={data?.worst_year ?? "—"}
         accent="destructive"

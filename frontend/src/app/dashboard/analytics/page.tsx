@@ -4,7 +4,7 @@ import { useState } from "react";
 import useSWR from "swr";
 import { Warning } from "@phosphor-icons/react";
 import { api, errorText, type Hotspot, type MciHotspot } from "@/lib/api";
-import { formatDate, formatIncidentType, formatNumber } from "@/lib/format";
+import { cleanTitle, formatDate, formatIncidentType, formatNumber } from "@/lib/format";
 import { PageHeader, DataState } from "@/components/page-header";
 import { TierBadge } from "@/components/tier-badge";
 import { BarChart, SERIES_COLORS } from "@/components/charts";
@@ -91,10 +91,10 @@ function MciComparison() {
           <div className="flex items-start gap-3 rounded-md border border-destructive/30 bg-destructive/5 p-3 text-sm">
             <Warning size={18} weight="fill" className="mt-0.5 shrink-0 text-destructive" />
             <div>
-              <div className="font-medium">Deadliest recorded MCI: {data.worst_mci.title}</div>
+              <div className="font-medium">Deadliest recorded MCI: {cleanTitle(data.worst_mci.title)}</div>
               <div className="text-xs text-muted-foreground">
                 {formatDate(data.worst_mci.event_date)} · {data.worst_mci.district || "Unknown district"} ·{" "}
-                <span className="capitalize">{formatIncidentType(data.worst_mci.incident_type)}</span> ·{" "}
+                <span>{formatIncidentType(data.worst_mci.incident_type)}</span> ·{" "}
                 <span className="font-semibold text-destructive">{formatNumber(data.worst_mci.deaths)} deaths</span>
               </div>
             </div>
@@ -165,7 +165,7 @@ function Hotspots() {
                 <TableCell className="text-right font-mono tabular-nums">
                   {"risk_score" in h ? h.risk_score.toFixed(1) : formatNumber(h.max_deaths)}
                 </TableCell>
-                <TableCell className="max-w-xs truncate text-xs capitalize text-muted-foreground" title={h.types ?? ""}>
+                <TableCell className="max-w-xs truncate text-xs text-muted-foreground" title={h.types ?? ""}>
                   {h.types ? h.types.split(",").map(formatIncidentType).join(", ") : "—"}
                 </TableCell>
               </TableRow>
