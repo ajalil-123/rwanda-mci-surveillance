@@ -127,6 +127,21 @@ WAR_VIOLENCE_TERMS = [
     "political assassination", "death squad",
 ]
 
+# ── Genocide / historical atrocity exclusion terms ───────────────────────────
+# Commemorations, trials, mass-grave discoveries and remains reburials are not
+# current incidents and must never enter the dataset.
+GENOCIDE_TERMS = [
+    "genocide", "jenoside", "génocide", "genocidaire", "génocidaire",
+    "kwibuka", "tutsi", "interahamwe", "1994 against", "mass grave",
+    "remains of victims", "reburial", "commemorat", "memorial",
+]
+
+
+def is_genocide_related(text: str) -> bool:
+    t = text.lower()
+    return any(term in t for term in GENOCIDE_TERMS)
+
+
 # ── Off-topic / general news exclusion terms ─────────────────────────────────
 # Articles that match MCI keywords by accident but are clearly not incidents.
 OFF_TOPIC_TERMS = [
@@ -257,6 +272,90 @@ def is_rwanda_relevant(text: str) -> bool:
     return True
 
 
+# ── Foreign-location gate ────────────────────────────────────────────────────
+# International coverage is fine, but the incident itself must be in Rwanda.
+# Headlines like "Kenya Girls School Dormitory Fire Kills 16 - Taarifa Rwanda"
+# only mention Rwanda through the publisher name.
+FOREIGN_PLACES = [
+    # Neighbours and the region — countries, nationalities, major cities
+    "kenya", "kenyan", "nairobi", "mombasa", "kisumu", "nakuru", "eldoret",
+    "uganda", "ugandan", "kampala", "entebbe", "jinja", "kabale", "mbarara",
+    "tanzania", "tanzanian", "dar es salaam", "dodoma", "arusha", "mwanza", "kagera",
+    "burundi", "burundian", "bujumbura", "gitega",
+    "congo", "congolese", "drc", "d.r.c", "kinshasa", "goma", "bukavu", "uvira",
+    "kivu", "ituri", "beni", "butembo", "kisangani", "lubumbashi",
+    "south sudan", "juba", "sudan", "khartoum", "ethiopia", "ethiopian", "addis ababa",
+    "somalia", "mogadishu", "zambia", "malawi", "mozambique", "zimbabwe",
+    "nigeria", "nigerian", "ghana", "ghanaian", "cameroon", "south africa",
+    "egypt", "morocco", "senegal", "mali", "niger", "angola", "madagascar",
+    # Further afield
+    "india", "indian", "pakistan", "bangladesh", "china", "chinese", "indonesia",
+    "philippines", "nepal", "brazil", "mexico", "haiti", "gaza", "israel", "ukraine",
+    "russia", "turkey", "iran", "iraq", "syria", "yemen", "afghanistan",
+]
+_FOREIGN_RE = re.compile(r"\b(" + "|".join(re.escape(p) for p in FOREIGN_PLACES) + r")\b")
+_FOREIGN_LOCATIVE_RE = re.compile(
+    r"\b(?:in|at|near|outside)\s+(?:the\s+)?(?:eastern\s+|western\s+|northern\s+|southern\s+)?("
+    + "|".join(re.escape(p) for p in FOREIGN_PLACES) + r")\b"
+)
+# Rwandan places that are not district names — camps, lakes, parks, towns
+RWANDA_LANDMARKS = [
+    "rwanda", "lake kivu", "lake burera", "lake ruhondo", "lake muhazi", "lake cyohoha",
+    "nyabarongo", "akagera", "nyungwe", "volcanoes national park", "gishwati",
+    "mahama", "kigeme", "kiziba", "mugombwa", "nyabiheke", "gihembe", "gashora",
+    "nyamata", "kabuga", "nyabugogo", "remera", "kimironko", "kacyiru", "gikondo",
+    "rusumo", "gatuna", "cyanika", "kamembe", "rugezi",
+]
+_RWANDA_PLACES_RE = re.compile(
+    r"\b(" + "|".join(re.escape(d) for d in list(DISTRICTS) + RWANDA_LANDMARKS) + r")\b"
+)
+
+
+def strip_publisher(title: str, source_name: str = "") -> str:
+    """
+    Remove publisher noise from a headline so only the incident text remains:
+      "Kenya ... Kills 16 - Taarifa Rwanda" → "Kenya ... Kills 16"
+      "Rwanda: Bukavu - 24 Killed ... - allAfrica.com" → "Bukavu - 24 Killed ..."
+    """
+    t = (title or "").replace("&nbsp;", " ").strip()
+    source = (source_name or "").strip().lower()
+    while True:
+        if "|" in t:
+            t = t.rsplit("|", 1)[0].strip()
+            continue
+        if " - " in t:
+            head, tail = t.rsplit(" - ", 1)
+            tl = tail.strip().lower()
+            if re.fullmatch(r"[\w-]+(\.[\w-]+)+", tl) or (source and (tl in source or source in tl)):
+                t = head.strip()
+                continue
+        break
+    # allAfrica files every East African story under a "Rwanda:" section label
+    return re.sub(r"^\s*rwanda\s*:\s*", "", t, flags=re.I)
+
+
+def is_foreign_incident(title: str, source_name: str = "") -> bool:
+    """
+    True when the headline places the incident outside Rwanda:
+      - it names a foreign place and no Rwandan place ("Kenya Girls School Fire Kills 16"), or
+      - it says the event happened in a foreign place, unless it also names a Rwandan
+        district ("Kenyan, Rwandan buses collide head on in Uganda").
+    """
+    h = strip_publisher(title, source_name).lower()
+    if source_name:
+        h = h.replace(source_name.lower(), " ")
+    if not _FOREIGN_RE.search(h):
+        return False
+    rwanda_places = set(_RWANDA_PLACES_RE.findall(h))
+    if not rwanda_places:
+        # "Rwandan"/"Rwandans" alone still points at Rwanda unless the headline
+        # says the event happened abroad ("Rwandan buses collide in Uganda")
+        if re.search(r"\brwand(?:an|ans|ese)\b", h):
+            return bool(_FOREIGN_LOCATIVE_RE.search(h))
+        return True
+    return bool(_FOREIGN_LOCATIVE_RE.search(h)) and rwanda_places <= {"rwanda"}
+
+
 def is_civilian_mci(text: str) -> bool:
     """
     Returns True only if the article describes a CIVILIAN mass casualty incident.
@@ -273,6 +372,10 @@ def is_civilian_mci(text: str) -> bool:
     for term in WAR_VIOLENCE_TERMS:
         if term in t:
             return False
+
+    # ── Reject genocide / commemoration stories ──────────────────────────
+    if is_genocide_related(t):
+        return False
 
     # ── Reject off-topic articles ────────────────────────────────────────
     for term in OFF_TOPIC_TERMS:

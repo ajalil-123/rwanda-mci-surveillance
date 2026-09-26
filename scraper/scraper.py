@@ -21,7 +21,7 @@ import requests
 from bs4 import BeautifulSoup
 
 from database import insert_incident, source_id, get_cursor, set_cursor, log_scrape
-from nlp import enrich, is_mci_relevant, is_rwanda_relevant, is_civilian_mci
+from nlp import enrich, is_foreign_incident, is_genocide_related, is_mci_relevant, is_rwanda_relevant, is_civilian_mci
 
 logger = logging.getLogger(__name__)
 
@@ -29,7 +29,9 @@ def should_store(enriched: dict) -> bool:
     """
     Gate before insert_incident().
     Rules (in order):
-      1. Reject articles from blocked sources (BBC, Voice of America, etc.)
+      1. Reject articles from blocked sources (BBC, Voice of America, etc.),
+         genocide commemoration / trial / mass-grave stories, and incidents
+         whose headline places them outside Rwanda
       2. Require at least 1 death OR 1 injured
       3. Claude Rwanda-relevance check (when API key is set)
          — sets enriched["rwanda_verified"] = 1 or 0 in-place
@@ -46,6 +48,18 @@ def should_store(enriched: dict) -> bool:
             return False
     except Exception:
         pass
+
+    # Rule 1b — never store genocide commemorations, trials or mass-grave stories
+    text = f"{enriched.get('title', '')} {enriched.get('description', '')} {enriched.get('full_text', '')}"
+    if is_genocide_related(text):
+        logger.info("Rejected genocide-related article: %s", enriched.get("title", "")[:60])
+        return False
+
+    # Rule 1c — the incident itself must be in Rwanda (publisher names like
+    # "Taarifa Rwanda" or allAfrica's "Rwanda:" label don't count)
+    if is_foreign_incident(enriched.get("title", ""), enriched.get("source_name", "")):
+        logger.info("Rejected foreign incident: %s", enriched.get("title", "")[:60])
+        return False
 
     # Rule 2 — must have casualties
     deaths  = int(enriched.get("deaths")  or 0)
