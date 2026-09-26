@@ -3,7 +3,7 @@
 import { useState } from "react";
 import useSWR from "swr";
 import { ArrowDownRight, ArrowUpRight } from "@phosphor-icons/react";
-import { api } from "@/lib/api";
+import { api, errorText } from "@/lib/api";
 import { formatNumber } from "@/lib/format";
 import { cn } from "@/lib/utils";
 import { PageHeader, DataState } from "@/components/page-header";
@@ -194,7 +194,7 @@ function YearOverYear() {
             </TableRow>
           </TableHeader>
           <TableBody>
-            {error ? <TableMessage colSpan={5} tone="error">Failed to load year-over-year data.</TableMessage> : null}
+            {error ? <TableMessage colSpan={5} tone="error">{errorText(error)}</TableMessage> : null}
             {isLoading ? <TableMessage colSpan={5}>Loading…</TableMessage> : null}
             {rows.map((r) => (
               <TableRow key={r.year}>

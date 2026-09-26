@@ -23,7 +23,9 @@ Repo → **Settings → Secrets and variables → Actions → New repository sec
 | Secret | Value |
 |---|---|
 | `DATABASE_URL` | Neon production string |
-| `ANTHROPIC_API_KEY` | optional — enables Claude verification |
+| `GEMINI_API_KEY` | AI verification + summaries (or `ANTHROPIC_API_KEY` for Claude) |
+
+Repository **variable** (Settings → Secrets and variables → Actions → Variables): `AI_PROVIDER` = `gemini` or `claude`.
 
 The workflow `.github/workflows/scrape.yml` runs hourly once it is on the default branch.
 Run it by hand from **Actions → Scrape incidents → Run workflow** (tick *historical* only for

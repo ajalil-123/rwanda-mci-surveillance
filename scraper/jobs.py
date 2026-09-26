@@ -11,8 +11,9 @@ on a schedule; everything else is run by hand when needed.
     python jobs.py reclassify  [--limit 100]
     python jobs.py reprocess   [--yes]
     python jobs.py migrate-sqlite path/to/mci_rwanda.db
+    python jobs.py eval-ai                     # test the AI gate on labelled cases
 
-Reads DATABASE_URL (and optionally ANTHROPIC_API_KEY) from the environment,
+Reads DATABASE_URL and an AI key (GEMINI_API_KEY or ANTHROPIC_API_KEY) from the environment,
 or from the repo-root .env when running locally.
 """
 import argparse
@@ -25,6 +26,10 @@ from dotenv import load_dotenv
 
 # One .env at the repo root, shared with the frontend
 load_dotenv(Path(__file__).resolve().parent.parent / ".env")
+
+# Windows consoles default to cp1252; article titles and logs contain Unicode
+for _stream in (sys.stdout, sys.stderr):
+    _stream.reconfigure(encoding="utf-8", errors="replace")
 
 logging.basicConfig(
     level=logging.INFO,
@@ -44,9 +49,11 @@ AI_COLUMNS = ("id, title, description, full_text, source_name, source_url, distr
               "incident_type, deaths, injured, event_date, published_at")
 
 
-def _require_anthropic() -> None:
-    if not os.environ.get("ANTHROPIC_API_KEY"):
-        raise EnvironmentError("ANTHROPIC_API_KEY is not set — AI jobs need it.")
+def _require_ai() -> None:
+    from ai import model_name, provider
+    if provider() is None:
+        raise EnvironmentError("No AI key set — AI jobs need GEMINI_API_KEY or ANTHROPIC_API_KEY.")
+    logger.info("AI provider: %s (%s)", provider(), model_name())
 
 
 def _fetch(sql: str, params=()) -> list[dict]:
@@ -79,8 +86,8 @@ def cmd_scrape(args) -> None:
 
 def cmd_verify(args) -> None:
     """Confirm Rwanda relevance with Claude. Rejected rows drop out of the dashboard view."""
-    from claude_ai import verify_rwanda_relevance
-    _require_anthropic()
+    from ai import verify_rwanda_relevance
+    _require_ai()
     where = "TRUE" if args.all else "rwanda_verified IS NULL"
     rows = _fetch(f"SELECT {AI_COLUMNS} FROM incidents WHERE {where} ORDER BY deaths DESC LIMIT %s", (args.limit,))
     kept = rejected = 0
@@ -101,8 +108,8 @@ def cmd_verify(args) -> None:
 
 def cmd_summarize(args) -> None:
     """Generate AI summaries for incidents that don't have one."""
-    from claude_ai import summarize_incident
-    _require_anthropic()
+    from ai import summarize_incident
+    _require_ai()
     where = "(ai_summary IS NULL OR ai_summary = '')"
     if args.mci_only:
         where += f" AND deaths >= {MCI_THRESHOLD}"
@@ -125,8 +132,8 @@ def cmd_summarize(args) -> None:
 
 def cmd_reclassify(args) -> None:
     """Re-type incidents stuck as 'other'; delete those Claude still can't classify."""
-    from claude_ai import verify_rwanda_relevance
-    _require_anthropic()
+    from ai import verify_rwanda_relevance
+    _require_ai()
     rows = _fetch(
         f"SELECT {AI_COLUMNS} FROM incidents "
         "WHERE incident_type IS NULL OR incident_type IN ('', 'other') "
@@ -151,6 +158,13 @@ def cmd_reclassify(args) -> None:
 def cmd_reprocess(args) -> None:
     from reprocess_db import run_all
     run_all(assume_yes=args.yes)
+
+
+def cmd_eval_ai(_args) -> None:
+    _require_ai()
+    from eval_ai import run
+    if not run():
+        raise SystemExit(1)
 
 
 def cmd_migrate_sqlite(args) -> None:
@@ -185,6 +199,8 @@ def main() -> int:
     p = sub.add_parser("reprocess", help="re-run NLP + dedup + tier backfill on all rows")
     p.add_argument("--yes", action="store_true", help="skip the confirmation prompt")
     p.set_defaults(func=cmd_reprocess)
+
+    sub.add_parser("eval-ai", help="run the AI scope gate against labelled test cases").set_defaults(func=cmd_eval_ai)
 
     p = sub.add_parser("migrate-sqlite", help="one-time copy of a local SQLite DB into Postgres")
     p.add_argument("path", help="path to mci_rwanda.db")

@@ -3,7 +3,7 @@
 import { useState } from "react";
 import useSWR from "swr";
 import { Warning } from "@phosphor-icons/react";
-import { api, type Hotspot, type MciHotspot } from "@/lib/api";
+import { api, errorText, type Hotspot, type MciHotspot } from "@/lib/api";
 import { formatDate, formatIncidentType, formatNumber } from "@/lib/format";
 import { PageHeader, DataState } from "@/components/page-header";
 import { TierBadge } from "@/components/tier-badge";
@@ -71,7 +71,7 @@ function MciComparison() {
             </TableRow>
           </TableHeader>
           <TableBody>
-            {error ? <TableMessage colSpan={3} tone="error">Failed to load MCI statistics.</TableMessage> : null}
+            {error ? <TableMessage colSpan={3} tone="error">{errorText(error)}</TableMessage> : null}
             {isLoading ? <TableMessage colSpan={3}>Loading…</TableMessage> : null}
             {rows.map(([label, mci, nonMci]) => (
               <TableRow key={label}>
@@ -147,7 +147,7 @@ function Hotspots() {
             </TableRow>
           </TableHeader>
           <TableBody>
-            {error ? <TableMessage colSpan={8} tone="error">Failed to load hotspots.</TableMessage> : null}
+            {error ? <TableMessage colSpan={8} tone="error">{errorText(error)}</TableMessage> : null}
             {isLoading ? <TableMessage colSpan={8}>Loading…</TableMessage> : null}
             {data && data.length === 0 ? <TableMessage colSpan={8}>No district data yet.</TableMessage> : null}
             {data?.map((h: Hotspot | MciHotspot, idx) => (
@@ -226,7 +226,7 @@ function SourceTiers() {
             </TableRow>
           </TableHeader>
           <TableBody>
-            {error ? <TableMessage colSpan={4} tone="error">Failed to load source tiers.</TableMessage> : null}
+            {error ? <TableMessage colSpan={4} tone="error">{errorText(error)}</TableMessage> : null}
             {isLoading ? <TableMessage colSpan={4}>Loading…</TableMessage> : null}
             {data?.map((t) => (
               <TableRow key={t.tier}>

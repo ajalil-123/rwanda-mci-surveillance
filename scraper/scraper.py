@@ -53,11 +53,12 @@ def should_store(enriched: dict) -> bool:
     if not (deaths > 0 or injured > 0):
         return False
 
-    # Rule 3 — Claude Rwanda relevance verification + incident type classification
+    # Rule 3 — AI (Claude or Gemini) Rwanda relevance verification + incident type classification
     import os
-    if os.environ.get("ANTHROPIC_API_KEY"):
+    from ai import provider
+    if provider():
         try:
-            from claude_ai import verify_rwanda_relevance
+            from ai import verify_rwanda_relevance
             result = verify_rwanda_relevance(enriched)
 
             if result["is_rwanda"] is None:

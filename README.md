@@ -5,7 +5,7 @@ for Rwanda's National Health Intelligence Centre (NHIC).
 
 ```
 frontend/   Next.js 16 dashboard — deployed on Vercel, reads Neon directly
-scraper/    Python scraper + NLP + Claude checks — runs hourly in GitHub Actions
+scraper/    Python scraper + NLP + AI checks (Gemini/Claude) — runs hourly in GitHub Actions
 docs/       ARCHITECTURE.md, DEPLOYMENT.md
 .github/    scrape.yml — the scheduled scrape job
 ```
@@ -37,7 +37,7 @@ cd ..
 ```
 
 Other jobs: `python jobs.py --help` (`verify`, `summarize`, `reclassify`, `reprocess`,
-`scrape --historical`). AI jobs need `ANTHROPIC_API_KEY` in `.env`.
+`scrape --historical`). AI jobs need `GEMINI_API_KEY` (or `ANTHROPIC_API_KEY`) in `.env`; `python jobs.py eval-ai` tests the AI gate.
 
 ### 2. Dashboard
 

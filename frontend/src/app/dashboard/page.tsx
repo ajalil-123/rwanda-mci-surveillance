@@ -3,7 +3,7 @@
 import { useMemo, useState } from "react";
 import useSWR from "swr";
 import { ArrowSquareOut, Bandaids, Funnel, MapPin, Skull } from "@phosphor-icons/react";
-import { api, type Incident, type SourceTier } from "@/lib/api";
+import { api, errorText, type Incident, type SourceTier } from "@/lib/api";
 import { formatDate, formatIncidentType, formatNumber, incidentDate, isKnownDistrict } from "@/lib/format";
 import { cn } from "@/lib/utils";
 import { PageHeader } from "@/components/page-header";
@@ -164,7 +164,7 @@ export default function MciClassificationPage() {
             {isLoading ? <TableMessage colSpan={10}>Loading…</TableMessage> : null}
             {error ? (
               <TableMessage colSpan={10} tone="error">
-                Failed to load. The backend may be starting up.
+                {errorText(error)}
               </TableMessage>
             ) : null}
             {data && incidents.length === 0 ? (

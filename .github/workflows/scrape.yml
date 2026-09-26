@@ -30,6 +30,8 @@ jobs:
     env:
       DATABASE_URL: ${{ secrets.DATABASE_URL }}
       ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+      GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+      AI_PROVIDER: ${{ vars.AI_PROVIDER }}
     steps:
       - uses: actions/checkout@v4
 
@@ -46,10 +48,10 @@ jobs:
 
       # Re-checks rows left unverified when Claude was unavailable during the scrape
       - name: Verify Rwanda relevance
-        if: env.ANTHROPIC_API_KEY != ''
+        if: env.ANTHROPIC_API_KEY != '' || env.GEMINI_API_KEY != ''
         run: python jobs.py verify --limit 50
 
       # Dashboard summaries for new incidents (biggest death tolls first)
       - name: Summarize new incidents
-        if: env.ANTHROPIC_API_KEY != ''
+        if: env.ANTHROPIC_API_KEY != '' || env.GEMINI_API_KEY != ''
         run: python jobs.py summarize --limit 25

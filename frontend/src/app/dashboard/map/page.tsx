@@ -3,7 +3,7 @@
 import { useState, type ReactNode } from "react";
 import dynamic from "next/dynamic";
 import useSWR from "swr";
-import { api } from "@/lib/api";
+import { api, errorText } from "@/lib/api";
 import { formatNumber } from "@/lib/format";
 import { cn } from "@/lib/utils";
 import { PageHeader } from "@/components/page-header";
@@ -85,7 +85,7 @@ export default function MapPage() {
       {/* isolate keeps Leaflet's high z-index panes below the Select popover */}
       <div className="isolate min-h-[480px] flex-1 overflow-hidden rounded-lg border border-border bg-muted/30">
         {error ? (
-          <MapMessage tone="error">Failed to load incidents. The backend may be starting up.</MapMessage>
+          <MapMessage tone="error">{errorText(error)}</MapMessage>
         ) : isLoading ? (
           <MapMessage>Loading incidents…</MapMessage>
         ) : (

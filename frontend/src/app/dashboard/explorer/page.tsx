@@ -4,7 +4,7 @@ import { useDeferredValue, useMemo, useState } from "react";
 import useSWR from "swr";
 import { format } from "date-fns";
 import { ArrowSquareOut, CaretDown, CaretUp, DownloadSimple, MagnifyingGlass } from "@phosphor-icons/react";
-import { api, type Incident } from "@/lib/api";
+import { api, errorText, type Incident } from "@/lib/api";
 import { toCsv, downloadCsv } from "@/lib/csv";
 import { formatDate, formatIncidentType, formatNumber, incidentDate, isKnownDistrict } from "@/lib/format";
 import { cn } from "@/lib/utils";
@@ -200,7 +200,7 @@ export default function ExplorerPage() {
           <TableBody>
             {error ? (
               <TableMessage colSpan={10} tone="error">
-                Failed to load. The backend may be starting up.
+                {errorText(error)}
               </TableMessage>
             ) : null}
             {isLoading ? <TableMessage colSpan={10}>Loading…</TableMessage> : null}

@@ -1,4 +1,5 @@
 import type { ReactNode } from "react";
+import { errorText } from "@/lib/api";
 import { cn } from "@/lib/utils";
 
 export function PageHeader({
@@ -36,7 +37,7 @@ export function DataState({
   children: ReactNode;
 }) {
   let message: string | null = null;
-  if (error) message = "Failed to load. The backend may be starting up.";
+  if (error) message = errorText(error);
   else if (isLoading) message = "Loading…";
   else if (isEmpty) message = "No data yet.";
 
