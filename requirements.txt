@@ -1,7 +1,0 @@
-flask
-flask-cors
-requests
-beautifulsoup4
-ntscraper
-gunicorn
-openpyxl

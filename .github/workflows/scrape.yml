@@ -1,0 +1,55 @@
+name: Scrape incidents
+
+on:
+  schedule:
+    # Hourly at :17 (off the top of the hour, when GitHub's scheduler is busiest).
+    # Hourly keeps a private repo inside the 2,000 free Actions minutes/month.
+    - cron: "17 * * * *"
+  workflow_dispatch:
+    inputs:
+      historical:
+        description: "Full historical backfill (slow — run once on a fresh database)"
+        type: boolean
+        default: false
+
+# Never run two scrapes against the database at once
+concurrency:
+  group: scrape
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  scrape:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    defaults:
+      run:
+        working-directory: scraper
+    env:
+      DATABASE_URL: ${{ secrets.DATABASE_URL }}
+      ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: scraper/requirements.txt
+
+      - run: pip install -r requirements.txt
+
+      - name: Scrape
+        run: python jobs.py scrape ${{ inputs.historical && '--historical' || '' }}
+
+      # Re-checks rows left unverified when Claude was unavailable during the scrape
+      - name: Verify Rwanda relevance
+        if: env.ANTHROPIC_API_KEY != ''
+        run: python jobs.py verify --limit 50
+
+      # Dashboard summaries for new incidents (biggest death tolls first)
+      - name: Summarize new incidents
+        if: env.ANTHROPIC_API_KEY != ''
+        run: python jobs.py summarize --limit 25
