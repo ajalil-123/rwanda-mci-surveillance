@@ -1,60 +1,115 @@
 # NHIC MCI Surveillance
 
-Media-based surveillance of civilian Mass Casualty Incidents (MCI, ≥ 3 deaths) in Rwanda,
-for Rwanda's National Health Intelligence Centre (NHIC).
+Media-based surveillance of civilian Mass Casualty Incidents (MCI, 3+ deaths) in Rwanda,
+for the National Health Intelligence Centre (NHIC).
 
-```
-frontend/   Next.js 16 dashboard — deployed on Vercel, reads Neon directly
-scraper/    Python scraper + NLP + AI checks (Gemini/Claude) — runs hourly in GitHub Actions
-docs/       ARCHITECTURE.md, DEPLOYMENT.md
-.github/    scrape.yml — the scheduled scrape job
-```
+| Folder | What it is | Runs on |
+|---|---|---|
+| `frontend/` | Next.js dashboard + login | Vercel |
+| `scraper/` | Python scraper, NLP and AI checks (Gemini or Claude) | GitHub Actions, hourly |
+| — | Postgres database | Neon |
 
-## Run locally
+---
 
-**Prerequisites:** Node 20.9+, Python 3.12+, a Neon project (a `dev` branch keeps local work
-away from production data).
+## Run it locally (Windows / PowerShell)
 
-### 0. One `.env` for everything
+### You need
+- **Node.js 20.9+** and **Python 3.12+**
+- A **Neon** connection string (use a `dev` branch in Neon so tests don't touch live data)
 
-```powershell
-copy .env.example .env      # then fill in DATABASE_URL and NEXTAUTH_SECRET
-```
+### 1. One-time setup
 
-Both the scraper and the dashboard read this single file at the repo root.
-
-### 1. Scraper (fills the database)
+Run these from the project folder:
 
 ```powershell
+# 1. Settings — one .env file for everything
+copy .env.example .env
+#    Open .env and fill in: DATABASE_URL, NEXTAUTH_SECRET, GEMINI_API_KEY
+
+# 2. Python (scraper)
 python -m venv venv
-venv\Scripts\activate      # macOS/Linux: source venv/bin/activate
+venv\Scripts\activate
 pip install -r scraper\requirements.txt
+
+# 3. Database tables (safe to re-run)
 cd scraper
-python jobs.py init-db                               # tables, view, users
-python jobs.py migrate-sqlite ..\data\mci_rwanda.db  # one-time: copy the old SQLite data
-python jobs.py scrape                                # incremental scrape (a few minutes)
+python jobs.py init-db
+cd ..
+
+# 4. Node (dashboard)
+cd frontend
+npm install
 cd ..
 ```
 
-Other jobs: `python jobs.py --help` (`verify`, `summarize`, `reclassify`, `reprocess`,
-`scrape --historical`). AI jobs need `GEMINI_API_KEY` (or `ANTHROPIC_API_KEY`) in `.env`; `python jobs.py eval-ai` tests the AI gate.
+Need a `NEXTAUTH_SECRET`? Generate one with:
+```powershell
+node -e "console.log(require('crypto').randomBytes(32).toString('base64'))"
+```
 
-### 2. Dashboard
+### 2. Start the dashboard
 
 ```powershell
 cd frontend
-npm install
-npm run dev                  # http://localhost:3000 → /signup to create an account
+npm run dev -- -p 3001
 ```
 
-### 3. Quality checks (what CI should run)
+Open **http://localhost:3001/signup**, create an account, then sign in.
+Stop it with `Ctrl+C`.
 
-```bash
+> Always use `npm run dev` (not `npx next dev`) — only the npm script loads the root `.env`.
+> Port 3001 is used because Metabase already uses 3000 on this machine.
+
+### 3. Get fresh data (optional — GitHub does this every hour)
+
+In a second terminal:
+
+```powershell
+venv\Scripts\activate
+cd scraper
+python jobs.py scrape
+```
+
+The dashboard picks up new incidents within a minute.
+
+---
+
+## Useful commands
+
+All scraper commands run from `scraper\` with the venv active:
+
+| Command | What it does |
+|---|---|
+| `python jobs.py scrape` | Fetch new articles (a few minutes) |
+| `python jobs.py scrape --historical` | Full backfill from 2010 (slow — only for an empty database) |
+| `python jobs.py verify --all` | Re-check every incident with the AI (Rwanda + in scope?) |
+| `python jobs.py summarize` | Write AI summaries for incidents without one |
+| `python jobs.py eval-ai` | Test the AI against 16 labelled examples |
+| `python jobs.py migrate-sqlite ..\data\mci_rwanda.db` | One-time import of the old SQLite data |
+| `python jobs.py --help` | List everything |
+
+Before pushing frontend changes:
+
+```powershell
 cd frontend
-npm run type-check && npm run lint && npm run build
-npx react-doctor@latest .
+npm run type-check; npm run lint; npm run build
 ```
+
+---
+
+## Troubleshooting
+
+| Problem | Fix |
+|---|---|
+| "DATABASE_URL is not set" | Fill it in the root `.env`, then restart with `npm run dev` |
+| Opening the site shows Metabase | You're on port 3000 — use **http://localhost:3001** |
+| "Could not create the account" | Run `python jobs.py init-db` (creates the `users` table) |
+| AI checks skipped | Add `GEMINI_API_KEY` to `.env` (and `AI_PROVIDER=gemini`) |
+| Password-reset email not sent | Locally the reset link is printed in the `npm run dev` terminal |
+
+---
 
 ## Deploy
 
-See [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md): Neon database → GitHub secrets → Vercel project.
+See [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md) — Neon → GitHub secrets → Vercel.
+How it fits together: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
