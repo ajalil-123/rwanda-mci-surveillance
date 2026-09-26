@@ -1,8 +1,11 @@
 import type { NextConfig } from "next";
+import { dropBlankAuthUrls } from "./src/lib/env";
 
 // Environment: the npm scripts load the repo-root .env (dotenv-cli) before Next
 // starts, so every Next process inherits it. On Vercel the variables come from
-// the project settings instead.
+// the project settings instead. A blank NEXTAUTH_URL would crash the build's
+// prerendering, so it is cleared here (and at runtime in src/instrumentation.ts).
+dropBlankAuthUrls();
 
 /** Baseline security headers for every route. */
 const securityHeaders = [

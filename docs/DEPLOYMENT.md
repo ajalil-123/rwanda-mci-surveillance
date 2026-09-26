@@ -38,8 +38,9 @@ a first-time backfill of an empty database).
    |---|---|
    | `DATABASE_URL` | Neon production string (same as above) |
    | `NEXTAUTH_SECRET` | `openssl rand -base64 32` (signs the login JWT) |
-   | `NEXTAUTH_URL` | `https://<your-app>.vercel.app` |
    | `RESEND_API_KEY` / `EMAIL_FROM` | password-reset emails (resend.com) |
+
+   Do **not** add `NEXTAUTH_URL` on Vercel — the app uses Vercel's own URL automatically.
 
 3. Deploy. Vercel redeploys on every push to the production branch.
 

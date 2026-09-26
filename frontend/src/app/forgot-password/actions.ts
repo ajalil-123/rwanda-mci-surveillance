@@ -4,6 +4,7 @@ import { hashPassword } from "@/server/password";
 import { consumeResetToken, createResetToken, RESET_TTL_MINUTES } from "@/server/password-reset";
 import { sendMail } from "@/server/mail";
 import { checkNewPassword } from "@/lib/password-policy";
+import { appBaseUrl } from "@/lib/env";
 import { redirect } from "next/navigation";
 
 export interface ForgotState {
@@ -15,18 +16,19 @@ export async function requestPasswordReset(_prev: ForgotState, form: FormData): 
   const email = String(form.get("email") ?? "").trim();
   if (!email) return { error: "Enter your email address." };
 
-  // Links are built from configuration, never from the request's Host header,
-  // so an attacker can't make the email point at their own site.
-  const baseUrl = process.env.NEXTAUTH_URL;
+  // Links are built from configuration (NEXTAUTH_URL, or Vercel's production URL),
+  // never from the request's Host header, so an attacker can't make the email
+  // point at their own site.
+  const baseUrl = appBaseUrl();
   if (!baseUrl) {
-    console.error("requestPasswordReset: NEXTAUTH_URL is not set");
+    console.error("requestPasswordReset: no app URL (set NEXTAUTH_URL outside Vercel)");
     return { error: "Password reset is not configured. Contact the administrator." };
   }
 
   try {
     const reset = await createResetToken(email);
     if (reset) {
-      const link = `${baseUrl.replace(/\/$/, "")}/reset-password?token=${reset.token}`;
+      const link = `${baseUrl}/reset-password?token=${reset.token}`;
       await sendMail({
         to: reset.email,
         subject: "Reset your NHIC MCI Surveillance password",
