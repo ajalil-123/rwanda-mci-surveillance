@@ -3,7 +3,7 @@
 *.env
 
 # Database — environment-specific, recreated on deploy
-data/
+/data/
 *.db
 *.sqlite3
 
@@ -19,7 +19,7 @@ build/
 .eggs/
 
 # Logs
-logs/
+/logs/
 *.log
 
 # Editor / OS
