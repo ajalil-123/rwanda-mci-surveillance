@@ -51,14 +51,13 @@ node -e "console.log(require('crypto').randomBytes(32).toString('base64'))"
 
 ```powershell
 cd frontend
-npm run dev -- -p 3001
+npm run dev
 ```
 
-Open **http://localhost:3001/signup**, create an account, then sign in.
+Open **http://localhost:3000/signup**, create an account, then sign in.
 Stop it with `Ctrl+C`.
 
 > Always use `npm run dev` (not `npx next dev`) — only the npm script loads the root `.env`.
-> Port 3001 is used because Metabase already uses 3000 on this machine.
 
 ### 3. Get fresh data (optional — GitHub does this every hour)
 
@@ -102,7 +101,7 @@ npm run type-check; npm run lint; npm run build
 | Problem | Fix |
 |---|---|
 | "DATABASE_URL is not set" | Fill it in the root `.env`, then restart with `npm run dev` |
-| Opening the site shows Metabase | You're on port 3000 — use **http://localhost:3001** |
+| Port 3000 is taken (e.g. Metabase is running) | Stop it (`docker stop metabase`), or run `npm run dev -- -p 3001` and set `NEXTAUTH_URL=http://localhost:3001` in `.env` |
 | "Could not create the account" | Run `python jobs.py init-db` (creates the `users` table) |
 | AI checks skipped | Add `GEMINI_API_KEY` to `.env` (and `AI_PROVIDER=gemini`) |
 | Password-reset email not sent | Locally the reset link is printed in the `npm run dev` terminal |
